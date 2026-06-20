@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yaha Sample Click Game</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="hero-card">
+        <p class="eyebrow">Yaha Remote Artifact Demo</p>
+        <h1>星星收集挑战</h1>
+        <p class="description">30 秒内点击跳动的星星得分。这个小游戏会被上传到 MinIO，并由 Play 页面通过远端 URL 加载。</p>
+        <div class="stats" aria-live="polite">
+          <div>
+            <span class="label">分数</span>
+            <strong id="score">0</strong>
+          </div>
+          <div>
+            <span class="label">剩余时间</span>
+            <strong><span id="time-left">30</span>s</strong>
+          </div>
+          <div>
+            <span class="label">最高连击</span>
+            <strong id="combo">0</strong>
+          </div>
+        </div>
+        <div class="arena" id="arena" aria-label="点击星星得分区域">
+          <button id="target" class="target" type="button" aria-label="点击星星">★</button>
+        </div>
+        <div class="actions">
+          <button id="start-button" class="primary-button" type="button">开始游戏</button>
+          <button id="reset-button" class="ghost-button" type="button">重新开始</button>
+        </div>
+        <p id="status" class="status">点击“开始游戏”后，尽可能快地收集星星。</p>
+      </section>
+    </main>
+    <script src="./game.js"></script>
+  </body>
+</html>

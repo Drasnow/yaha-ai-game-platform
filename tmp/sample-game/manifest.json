@@ -1,0 +1,9 @@
+{
+  "title": "Sample Click Game",
+  "slug": "sample-click-game",
+  "description": "A small click challenge game used to verify Yaha Play remote artifact loading from MinIO.",
+  "entry": "index.html",
+  "files": ["index.html", "style.css", "game.js"],
+  "runtime": "iframe-static-html",
+  "version": "1.0.0"
+}

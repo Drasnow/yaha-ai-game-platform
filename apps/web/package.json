@@ -6,7 +6,8 @@
     "dev": "next dev --webpack -H 127.0.0.1 -p 4000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:play-events": "tsx scripts/verify-play-events.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1072.0",

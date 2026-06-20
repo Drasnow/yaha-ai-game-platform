@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { PutBucketPolicyCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 const MINIO_REGION = "us-east-1";
 
@@ -66,6 +66,27 @@ export function getPublicUrl(key: string) {
   const normalizedKey = key.replace(/^\/+/, "");
 
   return `${endpoint}/${config.bucket}/${normalizedKey}`;
+}
+
+export async function setBucketPublicReadPolicy() {
+  const bucket = getStorageBucket();
+
+  await getS3Client().send(
+    new PutBucketPolicyCommand({
+      Bucket: bucket,
+      Policy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: "*",
+            Action: ["s3:GetObject"],
+            Resource: [`arn:aws:s3:::${bucket}/*`],
+          },
+        ],
+      }),
+    }),
+  );
 }
 
 export async function putObject({ key, body, contentType }: PutObjectInput) {
