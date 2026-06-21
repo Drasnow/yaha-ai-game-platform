@@ -20,18 +20,38 @@ type AgentGenerateRequest = {
   assets: GenerationAsset[];
 };
 
-type AgentGenerateResponse = {
-  status: "succeeded" | "failed";
-  title: string;
-  description: string;
-  tags: string[];
-  artifact: {
-    manifest_url: string;
-    entry_url: string;
-    artifact_base_url: string;
-  };
-  logs: AgentLogItem[];
-};
+type AgentGenerateResponse =
+  | {
+      status: "succeeded";
+      title: string;
+      description: string;
+      tags: string[];
+      artifact: {
+        manifest_url: string;
+        entry_url: string;
+        artifact_base_url: string;
+      };
+      logs: AgentLogItem[];
+      supervisor_feedback?: never;
+    }
+  | {
+      status: "rejected";
+      title?: never;
+      description?: never;
+      tags?: never;
+      artifact?: never;
+      logs: AgentLogItem[];
+      supervisor_feedback: string;
+    }
+  | {
+      status: "failed";
+      title: string;
+      description: string;
+      tags: string[];
+      artifact?: never;
+      logs: AgentLogItem[];
+      supervisor_feedback?: never;
+    };
 
 function escapeHtml(value: string) {
   return value
@@ -110,7 +130,120 @@ async function generateLocally(request: AgentGenerateRequest): Promise<AgentGene
   };
 }
 
-export async function generateGameWithAgent(request: AgentGenerateRequest) {
+export type AgentSseEvent =
+  | { type: "start"; task_id: string }
+  | { type: "log"; agent: string; step: string; message: string; timestamp: string }
+  | { type: "supervisor_decision"; status: string; complexity: string }
+  | { type: "validation"; passed: boolean; issues: string[] }
+  | { type: "artifact"; manifest_url: string; entry_url: string; artifact_base_url: string; file_count: number }
+  | { type: "rejected"; feedback: string }
+  | { type: "error"; message: string }
+  | { type: "end" };
+
+export type StreamCallbacks = {
+  onLog: (log: { agent: string; step: string; message: string }) => Promise<void>;
+  onStep: (step: string) => Promise<void>;
+  onRejected: (feedback: string) => Promise<void>;
+  onError: (message: string) => Promise<void>;
+};
+
+export async function* generateGameWithAgentStream(
+  request: AgentGenerateRequest,
+  callbacks: StreamCallbacks,
+): AsyncGenerator<AgentSseEvent, void, unknown> {
+  const agentServiceUrl = (process.env.AGENT_SERVICE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+
+  let fallbackMode = false;
+
+  // Step 1: try streaming endpoint
+  try {
+    const response = await fetch(`${agentServiceUrl}/generate/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Agent service stream returned ${response.status}: ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+
+        try {
+          const event = JSON.parse(raw) as AgentSseEvent;
+          yield event;
+
+          if (event.type === "log") {
+            await callbacks.onLog({
+              agent: event.agent,
+              step: event.step,
+              message: event.message,
+            });
+            await callbacks.onStep(event.step);
+          } else if (event.type === "rejected") {
+            await callbacks.onRejected(event.feedback);
+          } else if (event.type === "error") {
+            await callbacks.onError(event.message);
+          } else if (event.type === "end" || event.type === "start") {
+            // no-op
+          }
+        } catch {
+          // ignore malformed SSE lines
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`[agent-client] streaming failed, falling back to sync: ${error}`);
+    fallbackMode = true;
+  }
+
+  // Step 2: fallback to sync if stream unavailable
+  if (fallbackMode) {
+    const result = await generateGameWithAgent(request);
+    for (const log of result.logs) {
+      const normalized = {
+        agent: log.agentName ?? log.agent_name ?? "Agent",
+        step: log.step,
+        message: log.message,
+      };
+      await callbacks.onLog(normalized);
+      await callbacks.onStep(log.step);
+      yield {
+        type: "log",
+        agent: normalized.agent,
+        step: normalized.step,
+        message: normalized.message,
+        timestamp: new Date().toISOString(),
+      };
+    }
+    if (result.status === "rejected") {
+      await callbacks.onRejected(result.supervisor_feedback ?? "");
+      yield { type: "rejected", feedback: result.supervisor_feedback ?? "" };
+    }
+  }
+}
+
+export async function generateGameWithAgent(request: AgentGenerateRequest): Promise<AgentGenerateResponse> {
   const agentServiceUrl = (process.env.AGENT_SERVICE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
   try {
@@ -128,12 +261,15 @@ export async function generateGameWithAgent(request: AgentGenerateRequest) {
 
     const errorText = await response.text().catch(() => "");
     console.error(
-      `[agent-client] FastAPI Agent failed: ${response.status} ${response.statusText} ${errorText}`,
+      `[agent-client] FastAPI Agent HTTP error: ${response.status} ${response.statusText} — ${errorText}`,
     );
+    throw new Error(`Agent service returned ${response.status}: ${errorText}`);
   } catch (error) {
-    console.error("[agent-client] FastAPI Agent request error", error);
+    if (error instanceof Error && error.message.startsWith("Agent service returned")) {
+      throw error;
+    }
+    console.error("[agent-client] FastAPI Agent network error, falling back to local generator:", error);
+    console.warn(`[agent-client] falling back to local generator for task ${request.task_id}`);
+    return generateLocally(request);
   }
-
-  console.warn(`[agent-client] falling back to local generator for task ${request.task_id}`);
-  return generateLocally(request);
 }

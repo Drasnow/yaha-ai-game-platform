@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 
 import {
   buildGenerationTaskResponse,
   generationTaskCreateSchema,
   serializeGenerationTask,
 } from "@/lib/generation-tasks";
-import { createAndRunGenerationTask } from "@/lib/generation-task-runner";
+import { createGenerationTask, runGenerationTask } from "@/lib/generation-task-runner";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -21,6 +22,8 @@ const taskSelect = {
   createdAt: true,
   updatedAt: true,
 } as const;
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -74,16 +77,68 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "素材不存在或无权使用" }, { status: 400 });
   }
 
-  const task = await createAndRunGenerationTask({
+  if (parsed.data.gameId) {
+    const game = await prisma.game.findFirst({
+      where: { id: parsed.data.gameId, authorId: user.id },
+      select: { id: true },
+    });
+    if (!game) {
+      return NextResponse.json({ error: "游戏不存在或无权操作" }, { status: 404 });
+    }
+  }
+
+  // 1. 创建任务记录，立即返回
+  const task = await createGenerationTask({
     prisma,
     taskSelect,
     user,
     title: parsed.data.title,
     prompt: parsed.data.prompt,
     assetIds: parsed.data.assetIds,
-    assets,
+    ...(parsed.data.gameId ? { sourceGameId: parsed.data.gameId } : {}),
   });
 
-  const status = task.status === "FAILED" ? 500 : 201;
-  return NextResponse.json(buildGenerationTaskResponse(task), { status });
+  const responseTask = {
+    ...task,
+    status: task.status === "PENDING" ? "pending" : task.status === "RUNNING" ? "running" : task.status,
+  };
+
+  // 2. 立即返回 taskId，前端可以用这个 ID 建立 SSE 连接
+  const response = NextResponse.json(
+    {
+      task: {
+        id: task.id,
+        title: task.title,
+        prompt: task.prompt,
+        status: "pending",
+        currentStep: task.currentStep,
+        resultGameId: task.resultGameId,
+        resultVersionId: task.resultVersionId,
+        errorMessage: task.errorMessage,
+        createdAt: task.createdAt.toISOString(),
+        updatedAt: task.updatedAt.toISOString(),
+      },
+    },
+    { status: 201 },
+  );
+
+  // 3. 在响应发送后异步执行生成任务
+  after(async () => {
+    try {
+      await runGenerationTask({
+        prisma,
+        taskSelect,
+        taskId: task.id,
+        user,
+        prompt: parsed.data.prompt,
+        assets,
+        sourceGameId: parsed.data.gameId,
+      });
+    } catch (err) {
+      // 错误已在 runGenerationTask 内部写入数据库
+      console.error(`[generation-task] background run failed for task ${task.id}:`, err);
+    }
+  });
+
+  return response;
 }

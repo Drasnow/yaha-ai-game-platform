@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    "./pyproject.toml"
+  ],
+  "graphs": {
+    "generation_graph": "./app/agent/graph.py:get_generation_graph"
+  },
+  "env": "./.env.example"
+}

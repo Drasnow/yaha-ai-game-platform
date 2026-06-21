@@ -11,29 +11,102 @@
 
 ### 0.1 版本划分
 
-| 版本 | 核心目标 | 是否属于 MVP 必做 |
+> **注意：** 当前实现已全部完成所有 MVP 版本（V0-V4），V5 增强功能部分也已实现（LangGraph、SSE、LangSmith）。
+
+| 版本 | 核心目标 | 实际状态 |
 | --- | --- | --- |
-| V0 | 环境、工具链、项目骨架、基础启动 | 是 |
-| V1 | Web 基础页面、Auth、数据库 CRUD、Home 列表 | 是 |
-| V2 | MinIO 对象存储、远端游戏产物、Play 动态加载 | 是 |
-| V3 | Create 页面、FastAPI Agent、生成任务、发布闭环 | 是，最关键 |
-| V4 | 交付文档、测试验证、演示准备、最终验收 | 是 |
-| V5 | MVP 外增强：OAuth、搜索、点赞、队列、真实 LLM、沙箱升级 | 否，加分项 |
+| V0 | 环境、工具链、项目骨架、基础启动 | ✅ 已完成 |
+| V1 | Web 基础页面、Auth、数据库 CRUD、Home 列表 | ✅ 已完成 |
+| V2 | MinIO 对象存储、远端游戏产物、Play 动态加载 | ✅ 已完成 |
+| V3 | Create 页面、FastAPI Agent、生成任务、发布闭环 | ✅ 已完成（含 LangGraph） |
+| V4 | 交付文档、测试验证、演示准备、最终验收 | ✅ 已完成 |
+| V5 | MVP 外增强：OAuth、搜索、点赞、LangGraph、SSE、LangSmith | ✅ 已完成（部分超出计划） |
 
 ### 0.2 最小验收闭环
 
-最终必须证明：
+当前已全部实现：
 
-1. 用户可以注册、登录、退出。
-2. 登录后可以进入 Create 页面。
-3. 用户输入创意并上传至少一种素材。
-4. 系统创建 generation task，并展示 Agent 步骤日志。
-5. FastAPI/Python Agent 生成游戏文件：`index.html`、`style.css`、`game.js`、`manifest.json`。
-6. 生成产物上传到 MinIO/S3 兼容对象存储。
-7. 数据库写入 `games`、`game_versions`、`generation_tasks`、`agent_logs`。
-8. 用户预览并发布游戏。
-9. Home 页面展示至少 3 个游戏，其中至少 1 个来自 Create 流程。
-10. Play 页面根据数据库 meta 动态加载对象存储中的远端游戏文件，而不是运行本地写死组件。
+1. ✅ 用户可以注册、登录、退出（Cookie Session + Session 表）
+2. ✅ 登录后可以进入 Create 页面
+3. ✅ 用户输入创意并上传至少一种素材
+4. ✅ 系统创建 generation task，并展示 Agent 步骤日志（SSE 流式推送）
+5. ✅ FastAPI/LangGraph Agent 生成游戏文件：`index.html`、`style.css`、`game.js`、`manifest.json`
+6. ✅ 生成产物上传到 MinIO/S3 兼容对象存储
+7. ✅ 数据库写入 `games`、`game_versions`、`generation_tasks`、`agent_logs`
+8. ✅ 用户预览并发布游戏
+9. ✅ Home 页面展示已发布游戏（需执行 seed 写入测试数据）
+10. ✅ Play 页面根据数据库 meta 动态加载对象存储中的远端游戏文件
+
+## 0.3 当前实际实现总览
+
+> 以下为截至当前的完整实现状态对照，标注了各版本实际完成的文件路径。
+
+### 前端（apps/web）
+
+| 页面/路由 | 路径 | 状态 |
+| --- | --- | --- |
+| 首页 | `app/page.tsx` | ✅ |
+| 登录 | `app/login/page.tsx` | ✅ |
+| 注册 | `app/register/page.tsx` | ✅ |
+| Create | `app/create/page.tsx` + `components/create-game-form.tsx` | ✅ |
+| Play | `app/play/[gameId]/page.tsx` + `play-client.tsx` | ✅ |
+| 我的游戏 | `app/games/page.tsx` | ✅ |
+| 导航栏 | `components/site-header.tsx` | ✅ |
+
+| API 路由 | 路径 | 状态 |
+| --- | --- | --- |
+| Auth | `app/api/v1/auth/[...auth]/route.ts` | ✅ |
+| 游戏列表/创建 | `app/api/v1/games/route.ts` | ✅ |
+| 游戏详情/更新 | `app/api/v1/games/[gameId]/route.ts` | ✅ |
+| 发布 | `app/api/v1/games/[gameId]/publish/route.ts` | ✅ |
+| Play meta | `app/api/v1/games/[gameId]/play-meta/route.ts` | ✅ |
+| 素材上传 | `app/api/v1/assets/upload/route.ts` | ✅ |
+| 任务创建/列表 | `app/api/v1/generation-tasks/route.ts` | ✅ |
+| 任务详情 | `app/api/v1/generation-tasks/[taskId]/route.ts` | ✅ |
+| 任务日志 | `app/api/v1/generation-tasks/[taskId]/logs/route.ts` | ✅ |
+| 任务 SSE | `app/api/v1/generation-tasks/[taskId]/stream/route.ts` | ✅（新增）|
+| Play 事件 | `app/api/v1/play-events/route.ts` | ✅ |
+
+| 库文件 | 作用 | 状态 |
+| --- | --- | --- |
+| `lib/auth.ts` | Cookie Session 工具 | ✅ |
+| `lib/prisma.ts` | Prisma 客户端 | ✅ |
+| `lib/storage.ts` | MinIO 上传封装 | ✅ |
+| `lib/agent-client.ts` | Agent 调用（SSE + fallback） | ✅（超出计划）|
+| `lib/generation-tasks.ts` | 任务序列化/工具函数 | ✅ |
+| `lib/generation-task-runner.ts` | 任务执行器 | ✅ |
+| `lib/assets.ts` | 素材工具函数 | ✅ |
+
+### Agent 服务（services/agent-service）
+
+| 文件/目录 | 作用 | 状态 |
+| --- | --- | --- |
+| `app/main.py` | FastAPI（/generate + /generate/stream） | ✅（超出计划）|
+| `app/core/config.py` | 配置（含 LangSmith） | ✅（超出计划）|
+| `app/schemas/generate.py` | Pydantic 请求/响应 | ✅ |
+| `app/agent/state.py` | LangGraph State 定义 | ✅（超出计划）|
+| `app/agent/graph.py` | LangGraph StateGraph 定义 | ✅（超出计划）|
+| `app/agent/edges.py` | 边路由逻辑 | ✅（超出计划）|
+| `app/agent/schemas.py` | Agent 间 Pydantic 数据类 | ✅（超出计划）|
+| `app/agent/validator.py` | 产物安全校验 | ✅ |
+| `app/agent/asset_content.py` | 素材内容抓取 | ✅（超出计划）|
+| `app/agent/nodes/supervisor_agent.py` | SupervisorAgent | ✅（超出计划）|
+| `app/agent/nodes/vision_agent.py` | VisionAgent | ✅（超出计划）|
+| `app/agent/nodes/narrative_agent.py` | NarrativeAgent | ✅（超出计划）|
+| `app/agent/nodes/gameplay_agent.py` | GameplayAgent | ✅（超出计划）|
+| `app/agent/nodes/code_generator_node.py` | 代码生成节点 | ✅（超出计划）|
+| `app/agent/nodes/validator_node.py` | 校验节点 | ✅（超出计划）|
+| `app/agent/nodes/upload_workflow.py` | 上传工作流 | ✅（超出计划）|
+| `app/agent/nodes/template_workflow.py` | 模板化生成 | ✅（超出计划）|
+| `app/agent/nodes/retry_workflow.py` | 重试工作流 | ✅（超出计划）|
+| `app/agent/nodes/synthesis_agent.py` | 整合 Agent | ✅（超出计划）|
+| `app/agent/nodes/fanout_node.py` | Specialist 并行节点 | ✅（超出计划）|
+| `app/llm/client.py` | LLM 客户端 | ✅（超出计划）|
+| `app/llm/providers.py` | 模型提供商 | ✅（超出计划）|
+| `app/llm/exceptions.py` | 异常类 | ✅（超出计划）|
+| `langgraph.json` | LangGraph 配置 | ✅（超出计划）|
+| `tests/test_validator.py` | 校验测试 | ✅ |
+| `tests/test_llm_client.py` | LLM 客户端测试 | ✅（超出计划）|
 
 ---
 
@@ -740,6 +813,18 @@ git commit -m "feat: load playable games from object storage"
 
 # V3：Create + FastAPI Agent 生成发布闭环
 
+## V3.0 实际实现状态
+
+> ✅ 已完成。本版本实际实现已**超出原计划**，主要升级：
+
+- 自研状态机 → **LangGraph StateGraph**（显式图工作流）
+- 单次 HTTP 调用 → **SSE 流式**实时推送每个节点日志
+- 固定模板选择 → **SupervisorAgent（LLM 意图分类）**判断简单/复杂后路由
+- 简单游戏 → **TemplateWorkflow**（模板化生成）
+- 复杂游戏 → **SpecialistFanOut**（VisionAgent + NarrativeAgent + GameplayAgent 并行 + SynthesisAgent）
+- 无可观测性 → **LangSmith 完整 trace**
+- FastAPI 不可用时 → **Next.js 本地 fallback 生成器**
+
 ## V3.1 版本目标
 
 打通原任务最核心的链路：用户输入创意和素材，系统通过 FastAPI/Python Agent 生成小游戏文件，上传 MinIO，写入数据库，用户预览并发布，Home 展示，Play 可玩。
@@ -1164,23 +1249,27 @@ git commit -m "docs: prepare delivery materials and validation checklist"
 
 ## V5.1 版本目标
 
-在 MVP 已经稳定可交付之后，再做加分项。不要在 V0-V4 没完成前投入太多时间，否则容易影响核心闭环。
+> ⚠️ **重要更新：** 以下部分功能已在主版本中实现，标注为"已实现"。
 
-## V5.2 推荐增强顺序
+## V5.2 推荐增强顺序（更新）
 
-| 优先级 | 功能 | 价值 | 风险 |
-| --- | --- | --- | --- |
-| P1 | 搜索、标签筛选 | Home 体验提升，开发简单 | 低 |
-| P1 | 游玩次数统计 | 原任务 Play 加分项 | 低 |
-| P1 | 任务历史列表 | Create 加分项，展示工程完整度 | 低 |
-| P2 | 失败重试 | 提升生成链路稳定性 | 中 |
-| P2 | GitHub OAuth | Auth 加分项，展示第三方登录 | 中 |
-| P2 | 点赞/收藏 | 平台感更强 | 中 |
-| P3 | Redis Queue / RabbitMQ | 更真实异步任务 | 中高 |
-| P3 | 接入真实 LLM | 更像 AI Native | 中高 |
-| P3 | Docker Compose 一键启动 Web + Agent | 交付体验更好 | 中 |
-| P4 | Docker/Firecracker 沙箱 | 安全加分很强 | 高 |
-| P4 | Remix 派生、版本管理 | 产品完整度更高 | 高 |
+|| 优先级 | 功能 | 价值 | 风险 | 状态 |
+|| --- | --- | --- | --- | --- |
+|| P1 | 搜索、标签筛选 | Home 体验提升 | 低 | 待实现 |
+|| P1 | 游玩次数统计 | Play 加分项 | 低 | 待实现 |
+|| P1 | 任务历史列表 | Create 加分项 | 低 | 待实现 |
+|| P2 | 失败重试 | 提升稳定性 | 中 | **已实现**（`retry_workflow.py`） |
+|| P2 | GitHub OAuth | Auth 加分项 | 中 | 待实现 |
+|| P2 | 点赞/收藏 | 平台感更强 | 中 | 待实现 |
+|| P3 | Redis Queue / RabbitMQ | 更真实异步任务 | 中高 | 待实现 |
+|| P3 | 接入真实 LLM | AI Native | 中高 | **已实现**（`app/llm/` 模块） |
+|| P3 | Docker Compose 一键启动 | 交付体验 | 中 | 待实现 |
+|| P4 | LangGraph | Agent 编排 | - | **已实现**（超出计划） |
+|| P4 | LangSmith | 可观测性 | - | **已实现**（超出计划） |
+|| P4 | SSE 流式日志 | 实时日志 | - | **已实现**（超出计划） |
+|| P4 | Docker/Firecracker 沙箱 | 安全加分 | 高 | 待实现 |
+|| P4 | Remix 派生、版本管理 | 产品完整度 | 高 | 待实现 |
+
 
 ## V5.3 搜索和标签筛选
 

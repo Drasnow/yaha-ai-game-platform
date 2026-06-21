@@ -8,9 +8,32 @@ from app.agent.state import GeneratedFiles
 BLOCKED_PATTERNS = [
     (re.compile(r"<script\s+[^>]*src=[\"'](?:https?:)?//", re.IGNORECASE), "禁止加载外部脚本"),
     (re.compile(r"\beval\s*\(", re.IGNORECASE), "禁止使用 eval()"),
-    (re.compile(r"\b(?:new\s+)?Function\s*\(", re.IGNORECASE), "禁止使用 Function()"),
-    (re.compile(r"\blocalStorage\b", re.IGNORECASE), "禁止读写 localStorage"),
-    (re.compile(r"\bsessionStorage\b", re.IGNORECASE), "禁止读写 sessionStorage"),
+    # Function 构造器
+    # JavaScript 大小写敏感：`function` (小写 f) = 函数声明关键字；`Function` (大写 F) = 构造器
+    # `\bFunction\s*\(` 精确拦截 "Function" + 左括号，中间允许空格（`Function ()` 也属于危险调用）
+    # 放行: `function foo(){}`（小写 f）、`var $ = function(id){}`（小写 f）、`canvas.getContext`（无 Function 词）
+    (re.compile(r"\bFunction\s*\(", 0), "禁止使用 Function() 构造器"),
+    # localStorage / sessionStorage
+    # 安全原则：只允许静态字符串 key，禁止变量 key（防止 prompt injection 通过 key 注入）
+    # 放行: `localStorage.setItem('score', v)` / `localStorage.getItem('best')` / `localStorage.clear()`
+    # 拦截: `localStorage[keyVar]` / `localStorage.setItem(keyVar, v)` / `localStorage.getItem(variable)`
+    # 原理: `\bStorage\s*\[(?!\s*['\"])` 拦截 Storage[ 后第一个非空白字符不是引号的情况
+    (
+        re.compile(
+            r"\b(?:local|session)Storage\s*\[(?!\s*['\"])",
+            re.IGNORECASE,
+        ),
+        "禁止使用动态 key 访问存储",
+    ),
+    (
+        re.compile(
+            r"\b(?:local|session)Storage"
+            r"\.(?:getItem|setItem|removeItem)"
+            r"\s*\(\s*(?!\s*['\"])",
+            re.IGNORECASE,
+        ),
+        "禁止使用变量作为存储 key",
+    ),
     (re.compile(r"document\.cookie", re.IGNORECASE), "禁止访问 document.cookie"),
     (re.compile(r"\bfetch\s*\(", re.IGNORECASE), "禁止发起非白名单 fetch 请求"),
     (re.compile(r"\bXMLHttpRequest\b", re.IGNORECASE), "禁止使用 XMLHttpRequest"),
@@ -21,6 +44,10 @@ ALLOWED_FILES = REQUIRED_FILES
 
 class ArtifactValidationError(ValueError):
     pass
+
+
+# 别名，用于兼容导入
+ValidationError = ArtifactValidationError
 
 
 def validate_generated_files(generated: GeneratedFiles) -> None:

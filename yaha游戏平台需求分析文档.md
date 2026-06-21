@@ -830,6 +830,110 @@ Agent 编排：Python 自研状态机；增强版可接 LangGraph / CrewAI
 
 ---
 
+## 1.5 当前实现状态
+
+### 实现概览
+
+截至当前版本，以下核心功能已**全部实现并可用**：
+
+| 模块 | 实现状态 | 说明 |
+| --- | --- | --- |
+| Auth（邮箱注册/登录/退出） | ✅ 已实现 | Next.js Route Handlers + Cookie Session |
+| Home（游戏列表） | ✅ 已实现 | Prisma + PostgreSQL，从数据库读取 |
+| Play（动态加载） | ✅ 已实现 | iframe sandbox + MinIO 远端产物 |
+| Create（多模态输入） | ✅ 已实现 | 文字创意 + 文件上传 + 任务进度 |
+| Agent 生成链路 | ✅ 已实现 | LangGraph Supervisor + Specialist + SSE 流式日志 |
+| 对象存储 | ✅ 已实现 | MinIO + AWS SDK v3 |
+| 数据库 | ✅ 已实现 | PostgreSQL + Prisma，完整 Schema |
+| 发布流程 | ✅ 已实现 | Draft → Published → 首页可见 |
+| Play 事件埋点 | ✅ 已实现 | load_start/load_success/load_failed/play_start |
+| Dockerfile 本地 fallback | ✅ 已实现 | Web 前端 fallback 本地生成器 |
+| LangGraph 可观测性 | ✅ 已实现 | LangSmith 集成，完整 trace |
+| LLM 客户端 | ✅ 已实现 | OpenAI 兼容接口，多模型支持 |
+
+### 实际架构差异
+
+原文档描述的"MVP 用 HTTP 调 FastAPI + 状态机"已升级为：
+
+- **Agent 编排层**：使用 LangGraph `StateGraph` 实现 Supervisor → SpecialistFanOut → TemplateWorkflow → CodeGenerator → Validator → Upload 的完整工作流图
+- **流式接口**：`POST /generate/stream` 支持 SSE 实时推送每个节点的日志，前端实时展示
+- **Agent 节点**：SupervisorAgent（意图分类）、VisionAgent、NarrativeAgent、GameplayAgent、CodeGeneratorNode、ValidatorNode、UploadWorkflow
+- **LLM 客户端**：独立 `app/llm/` 模块，支持 OpenAI 兼容接口，内置降级策略
+- **产物校验**：完整危险 API 拦截（eval、Function 构造器、动态 Storage key、fetch、XMLHttpRequest 等）
+
+### 已实现的文件结构
+
+```
+apps/web/
+  app/
+    api/v1/auth/[...auth]/route.ts        ← Auth API
+    api/v1/games/route.ts                 ← 游戏列表/创建
+    api/v1/games/[gameId]/route.ts        ← 游戏详情/更新
+    api/v1/games/[gameId]/publish/route.ts ← 发布
+    api/v1/games/[gameId]/play-meta/route.ts ← Play meta
+    api/v1/assets/upload/route.ts           ← 素材上传
+    api/v1/generation-tasks/route.ts       ← 任务创建/列表
+    api/v1/generation-tasks/[taskId]/route.ts ← 任务详情
+    api/v1/generation-tasks/[taskId]/logs/route.ts ← 日志流
+    api/v1/generation-tasks/[taskId]/stream/route.ts ← SSE 轮询
+    api/v1/play-events/route.ts             ← Play 事件
+    page.tsx                               ← 首页
+    login/page.tsx                         ← 登录
+    register/page.tsx                      ← 注册
+    create/page.tsx                        ← Create
+    play/[gameId]/page.tsx                ← Play
+    games/page.tsx                        ← 我的游戏
+  components/
+    site-header.tsx                        ← 导航栏
+    create-game-form.tsx                   ← 创建表单
+    delete-game-button.tsx                 ← 删除游戏
+    game-card-actions.tsx                  ← 游戏卡片操作
+  lib/
+    auth.ts                                ← Auth 工具
+    prisma.ts                              ← Prisma 客户端
+    storage.ts                             ← MinIO 上传
+    agent-client.ts                        ← Agent 调用客户端（含本地 fallback）
+    generation-tasks.ts                     ← 任务工具函数
+    generation-task-runner.ts               ← 任务执行器
+    assets.ts                              ← 素材工具函数
+  prisma/
+    schema.prisma                          ← 完整数据模型
+
+services/agent-service/
+  app/
+    main.py                                ← FastAPI（/generate + /generate/stream）
+    core/config.py                         ← 配置（LangSmith + LLM）
+    schemas/generate.py                    ← 请求/响应 Pydantic Schema
+    agent/
+      state.py                             ← LangGraph State 定义
+      graph.py                             ← LangGraph StateGraph 定义
+      edges.py                             ← 边路由逻辑
+      schemas.py                           ← Agent 间传递的 Pydantic 数据类
+      validator.py                         ← 产物安全校验
+      asset_content.py                     ← 素材内容抓取
+      nodes/
+        supervisor_agent.py                ← SupervisorAgent（意图分类）
+        vision_agent.py                    ← VisionAgent（视觉规范）
+        narrative_agent.py                 ← NarrativeAgent（叙事规范）
+        gameplay_agent.py                  ← GameplayAgent（游戏机制）
+        code_generator_node.py            ← 代码生成节点
+        validator_node.py                  ← 校验节点
+        upload_workflow.py                 ← 上传工作流
+        template_workflow.py               ← 模板化游戏生成
+        retry_workflow.py                  ← 重试工作流
+        synthesis_agent.py                 ← 整合 Agent
+        fanout_node.py                     ← Specialist 并行节点
+    llm/
+      client.py                            ← LLM 客户端
+      providers.py                         ← 模型提供商
+      exceptions.py                        ← 异常类
+  langgraph.json                           ← LangGraph 配置
+  tests/test_validator.py                  ← 校验测试
+  tests/test_llm_client.py                 ← LLM 客户端测试
+```
+
+---
+
 ## 17. 一句话结论
 
 本任务的核心不是“做一个游戏列表网站”，而是要证明你能在短时间内设计并实现一个 AI Agent 驱动的互动游戏生成平台。当前最优方案是：用 Next.js 全栈主应用跑通登录、任务、数据库、发布、Home 和 Play；用 FastAPI/Python Agent 微服务跑通游戏生成、产物校验和可扩展的 Agent 编排。

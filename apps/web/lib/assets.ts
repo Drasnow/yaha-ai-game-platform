@@ -1,10 +1,15 @@
-﻿export const ASSET_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export const ASSET_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export const ALLOWED_ASSET_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
   "text/plain",
+  "text/markdown",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+] as const;
+
+export const ALLOWED_ASSET_EXTENSIONS = [
+  ".txt",
+  ".md",
+  ".docx",
 ] as const;
 
 const allowedMimeTypes = new Set<string>(ALLOWED_ASSET_MIME_TYPES);

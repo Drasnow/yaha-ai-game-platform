@@ -76,6 +76,36 @@ export async function GET(_request: Request, context: RouteContext) {
   return NextResponse.json({ game });
 }
 
+export async function DELETE(_request: Request, context: RouteContext) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const { gameId } = await context.params;
+
+  const existingGame = await prisma.game.findFirst({
+    where: {
+      id: gameId,
+      authorId: user.id,
+    },
+    select: { id: true, status: true },
+  });
+
+  if (!existingGame) {
+    return NextResponse.json({ error: "游戏不存在" }, { status: 404 });
+  }
+
+  if (existingGame.status !== "DRAFT") {
+    return NextResponse.json({ error: "仅支持删除草稿状态的游戏" }, { status: 403 });
+  }
+
+  await prisma.game.delete({ where: { id: gameId } });
+
+  return NextResponse.json({ success: true });
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   const user = await getCurrentUser();
 

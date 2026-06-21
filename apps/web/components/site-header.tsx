@@ -6,11 +6,11 @@ export async function SiteHeader() {
   const user = await getCurrentUser();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/80 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#09090b] backdrop-blur">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
         <Link
           href="/"
-          className="font-semibold tracking-tight transition hover:text-indigo-300"
+          className="text-lg font-semibold text-white tracking-tight transition hover:text-indigo-300"
         >
           首页
         </Link>

@@ -5,6 +5,7 @@ const taskStatusMap = {
   RUNNING: "running",
   SUCCEEDED: "succeeded",
   FAILED: "failed",
+  DEGRADED: "failed",
 } as const;
 
 export type AgentLogInput = {
@@ -22,6 +23,7 @@ export const generationTaskCreateSchema = z.object({
     .optional()
     .default([])
     .transform((assetIds) => Array.from(new Set(assetIds))),
+  gameId: z.string().trim().cuid2().optional(),
 });
 
 export function normalizeAgentLogs(logs: AgentLogInput[]) {
@@ -36,7 +38,7 @@ type GenerationTaskForResponse = {
   id: string;
   title: string;
   prompt: string;
-  status: keyof typeof taskStatusMap;
+  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "DEGRADED";
   currentStep: string | null;
   resultGameId: string | null;
   resultVersionId: string | null;

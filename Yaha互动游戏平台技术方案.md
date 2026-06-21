@@ -22,7 +22,10 @@
 | 对象存储 | MinIO | 本地 S3 兼容对象存储 |
 | 对象存储 SDK | AWS SDK v3；Python 可选 boto3 | Next.js 管素材和元信息；Python 可上传 Agent 产物 |
 | Agent 微服务 | FastAPI + Python 3.11+ | Agent 编排、模型调用、文件生成、产物校验 |
-| Agent 编排 | Python 自研状态机；可升级 LangGraph | 多 Agent 步骤、日志、模板生成 |
+| **Agent 编排** | **LangGraph StateGraph（已实现，超出原计划）** | **Supervisor → Specialist → Template → CodeGen → Validator → Upload 完整图工作流** |
+| **Agent 流式接口** | **FastAPI SSE（已实现，超出原计划）** | **/generate/stream 实时推送每个节点日志，前端增量写入 DB** |
+| **LLM 客户端** | **独立 app/llm/ 模块（已实现，超出原计划）** | **OpenAI 兼容接口，多模型支持，完整降级策略** |
+| **可观测性** | **LangSmith（已实现，超出原计划）** | **完整 trace，API Key 可配置** |
 | 异步任务 | MVP 用任务表 + HTTP 调 FastAPI；增强版 RabbitMQ / Redis Queue | 2 天内先降低复杂度，后续借鉴 HyperHit 演进 |
 | 游戏产物 | HTML + CSS + Vanilla JS + manifest.json | 最容易远端加载和 iframe 运行 |
 | 运行隔离 | iframe sandbox + 产物静态校验 | MVP 安全隔离 |
@@ -60,35 +63,56 @@ Browser
 Next.js Web 主应用
   │
   ├─ Pages
-  │   ├─ Home：展示 published 游戏
-  │   ├─ Login/Register：登录注册
-  │   ├─ Create：输入创意、上传素材、查看 Agent 日志
-  │   └─ Play：获取 play-meta，iframe sandbox 加载远端游戏
+  │   ├─ Home（/）：展示 published 游戏
+  │   ├─ Login（/login）：登录
+  │   ├─ Register（/register）：注册
+  │   ├─ Create（/create）：输入创意、上传素材、查看 Agent 日志
+  │   ├─ Play（/play/[gameId]）：iframe sandbox 加载远端游戏
+  │   └─ Games（/games）：我的游戏列表
   │
-  ├─ Route Handlers / Server Actions
-  │   ├─ Auth：注册、登录、退出、当前用户
-  │   ├─ Games：游戏列表、详情、发布、play-meta
-  │   ├─ Assets：素材上传到 MinIO
-  │   ├─ Generation Tasks：创建任务、查询任务、查询日志
-  │   └─ Play Events：记录加载和游玩事件
+  ├─ Route Handlers
+  │   ├─ Auth（/api/v1/auth/[...auth]）：注册、登录、退出、当前用户
+  │   ├─ Games（/api/v1/games、[gameId]）：游戏列表、详情、发布、play-meta
+  │   ├─ Assets（/api/v1/assets/upload）：素材上传到 MinIO
+  │   ├─ Generation Tasks（/api/v1/generation-tasks、[taskId]）：创建、轮询、日志
+  │   ├─ Generation Tasks Stream（/api/v1/generation-tasks/[taskId]/stream）：SSE 轮询
+  │   └─ Play Events（/api/v1/play-events）：记录加载和游玩事件
   │
   ├─ Prisma → PostgreSQL
   ├─ AWS SDK v3 → MinIO
-  └─ AgentClient HTTP 调用
-      │
-      ▼
+  ├─ AgentClient → FastAPI SSE + sync fallback
+  └─ LangSmith（可选，可观测性）
+
 FastAPI / Python Agent Service
   │
-  ├─ POST /generate
-  ├─ Python Agent Orchestrator
-  │   ├─ RequirementAgent
-  │   ├─ GameDesignAgent
-  │   ├─ CodeGenerationAgent
-  │   ├─ BuildValidateAgent
-  │   └─ ArtifactAgent
+  ├─ POST /generate（同步）
+  ├─ POST /generate/stream（SSE 流式）
+  ├─ GET /health
   │
-  ├─ Pydantic schemas
-  └─ boto3 → MinIO，可选
+  ├─ LangGraph StateGraph
+  │   │
+  │   ├─ SupervisorAgent：意图分类（LLM）
+  │   │   → approved_simple → TemplateWorkflow
+  │   │   → approved_complex → FanOut（并行 Specialist）
+  │   │   → rejected → 返回拒绝反馈
+  │   │
+  │   ├─ SpecialistFanOut（并行执行）
+  │   │   ├─ VisionAgent（LLM）：视觉规范
+  │   │   ├─ NarrativeAgent（LLM）：叙事规范
+  │   │   └─ GameplayAgent（LLM）：游戏机制
+  │   │
+  │   ├─ SynthesisAgent（LLM）：整合 Specialist 结果
+  │   ├─ CodeGeneratorNode：生成 HTML/CSS/JS/manifest
+  │   ├─ ValidatorNode：产物安全校验（危险 API 拦截）
+  │   ├─ UploadWorkflow：上传 MinIO
+  │   └─ RetryWorkflow：失败重试（可选）
+  │
+  ├─ app/llm/（LLM 客户端，支持 OpenAI 兼容接口）
+  ├─ Pydantic schemas（GenerateRequest/Response）
+  └─ LangSmith 集成（可选）
+
+PostgreSQL（用户、游戏、版本、素材、任务、日志、埋点）
+MinIO（uploaded-assets/、game-bundles/）
 ```
 
 ### 2.1 模块边界
@@ -489,7 +513,40 @@ iframe 建议：
 
 ## 7. Agent 编排
 
-### 7.1 工作流
+### 7.0 实际实现的 LangGraph 架构
+
+当前实现已超出原计划的"自研状态机"，升级为基于 LangGraph 的显式图工作流：
+
+```text
+GenerateRequest
+     │
+     ▼
+SupervisorAgent（LLM）
+     │
+     ├─ status=rejected → 返回 supervisor_feedback，终止
+     │
+     ├─ status=approved_simple → TemplateWorkflow
+     │                            ├─ GameDesignAgent（基于模板生成）
+     │                            ├─ CodeGeneratorNode
+     │                            ├─ ValidatorNode（危险 API 校验）
+     │                            └─ UploadWorkflow（上传 MinIO）
+     │
+     └─ status=approved_complex → SpecialistFanOut（并行 Specialist）
+                                   ├─ VisionAgent（LLM）
+                                   ├─ NarrativeAgent（LLM）
+                                   └─ GameplayAgent（LLM）
+                                   └─ SynthesisAgent（LLM，整合 Specialist 结果）
+                                   └─ CodeGeneratorNode
+                                   └─ ValidatorNode
+                                   └─ UploadWorkflow
+```
+
+流式日志（通过 `/generate/stream` SSE 推送）：
+- 每个节点执行时立即推送新日志
+- 前端实时写入数据库 `agent_logs` 表
+- 失败时可选 RetryWorkflow 重试
+
+### 7.1 工作流（原计划，供参考）
 
 ```text
 GenerationTask(pending)
@@ -509,9 +566,26 @@ Next.js：写入 agent_logs、games、game_versions，更新任务状态
 GenerationTask(succeeded)
 ```
 
-### 7.2 MVP 生成策略
+### 7.2 游戏生成策略
 
-先做模板生成，保证稳定演示。
+实际实现使用 LangGraph + Specialist + 模板结合。Supervisor 判断复杂度后路由到不同路径：
+
+**Supervisor 判断规则：**
+- LLM 分析用户输入，判断是否有效（排除闲聊/问答）
+- 无效 → rejected，返回友好提示
+- 简单游戏（<100字符）→ TemplateWorkflow（模板化生成）
+- 复杂游戏（>=100字符或独特玩法）→ SpecialistFanOut（并行 Specialist + LLM 生成）
+
+**模板化生成（TemplateWorkflow）：**
+|| 模板 | 关键词 | 玩法 |
+|| --- | --- | --- |
+|| click_challenge | 点击、得分、星星 | 倒计时内点击目标得分 |
+|| avoid_obstacle | 躲避、障碍、生存 | 键盘或鼠标躲避障碍 |
+|| quiz_game | 问答、选择、知识 | 多选题互动 |
+
+**复杂生成（SpecialistFanOut）：** VisionAgent（视觉）→ NarrativeAgent（叙事）→ GameplayAgent（机制）→ SynthesisAgent（整合）→ CodeGeneratorNode → ValidatorNode → UploadWorkflow
+
+**降级策略：** LLM 调用失败时自动降级为模板化生成；FastAPI 不可用时 Next.js 端有本地 fallback 生成器
 
 | 模板 | 关键词 | 玩法 |
 | --- | --- | --- |
@@ -521,9 +595,14 @@ GenerationTask(succeeded)
 
 没有匹配关键词时默认使用 `click_challenge`。
 
-### 7.3 日志写入
+### 7.3 日志写入（SSE 流式）
 
-每个 Agent 步骤生成日志结构，由 FastAPI 返回给 Next.js，再由 Next.js 写入 `agent_logs`：
+实际实现使用 SSE 流式推送 + 前端实时写入数据库：
+
+1. FastAPI `/generate/stream` 推送每个节点的新日志（SSE `data: {...}\n\n`）
+2. Next.js SSE 路由 `/api/v1/generation-tasks/[taskId]/stream` 轮询后端 SSE 并转发给前端
+3. 前端收到后立即写入 `agent_logs` 表
+4. 每个日志包含：`agent`、`step`、`message`、`timestamp`
 
 ```json
 {
@@ -535,16 +614,13 @@ GenerationTask(succeeded)
 
 ### 7.4 可升级点
 
-后续可以把这些函数替换为真实模型：
+当前已实现 LangGraph 完整图工作流，以下为后续增强方向：
 
-```python
-analyze_requirement(prompt, assets)
-design_game(requirement)
-generate_game_files(game_design)
-validate_generated_bundle(files)
-```
-
-可接：OpenAI、Anthropic、LangGraph、CrewAI、Hermes CLI、本地模型。
+- 接入更强大的 LLM 模型（Claude、GPT）
+- 扩展 Specialist Agent 数量和能力
+- 增加 Docker 沙箱构建和更严格 AST 安全扫描
+- 持久化 LangGraph checkpoint，支持断点续跑
+- 升级为 RabbitMQ 异步任务总线
 
 ---
 
@@ -557,19 +633,34 @@ validate_generated_bundle(files)
 - 文件名不直接信任，object key 使用服务端生成 ID。
 - 上传素材不直接作为可执行代码运行。
 
-### 8.2 Agent 产物安全
+### 8.2 Agent 产物安全（实际实现）
 
-产物校验时拒绝危险字符串：
+产物校验拦截以下危险模式（完整实现于 `validator.py`）：
 
 ```text
-document.cookie
-localStorage
-sessionStorage
-eval(
-new Function
-fetch('/api
-fetch("/api
-XMLHttpRequest
+# 禁止加载外部脚本
+禁止 <script src="http://...">
+
+# 禁止 eval / Function 构造器
+禁止 eval()
+禁止 Function()
+
+# 禁止动态 Storage key
+禁止 localStorage[something]（非字符串常量 key）
+禁止 sessionStorage[variable]
+禁止 localStorage.getItem(variable) / setItem(variable)
+
+# 禁止主站 Cookie 访问
+禁止 document.cookie
+
+# 禁止发起非白名单网络请求
+禁止 fetch()（任意 URL）
+禁止 XMLHttpRequest
+
+# 产物文件限制
+只允许 index.html、style.css、game.js、manifest.json
+manifest.json 必须为合法 JSON
+manifest entry 必须为 index.html
 ```
 
 ### 8.3 Runtime 安全
@@ -1208,31 +1299,45 @@ docs/manual-test-checklist.md
 
 ## 16. 后续一周迭代方向
 
-1. 把 HTTP 调用升级为 RabbitMQ / Redis Queue 异步任务总线。
-2. 接入 LangGraph，把 Agent 状态机变成显式图工作流。
-3. 接入真实 LLM 生成更丰富的游戏规则和代码。
-4. 增加 Docker 沙箱构建和静态安全扫描。
-5. 增加游戏版本管理和 Remix。
-6. 增加搜索、标签筛选、点赞、收藏、排行榜。
-7. 增加 pytest 接口测试和 Playwright E2E。
-8. 部署到线上：Vercel + Railway/Fly.io + Supabase/Postgres + S3/R2/OSS。
-9. 增加 GitHub/Google OAuth。
+> 当前 MVP 已实现 LangGraph + 流式 SSE + 完整 Agent 工作流，以下为后续增强方向：
+
+1. 接入更强大的 LLM（Claude、GPT-4）提升 Specialist 输出质量
+2. 增加 Docker 沙箱构建和更严格的 AST 安全扫描
+3. 持久化 LangGraph checkpoint，支持失败节点断点续跑
+4. 升级为 RabbitMQ/Redis Queue 异步任务总线，前端完全无等待
+5. 增加游戏版本管理和 Remix 派生
+6. 增加搜索、标签筛选、点赞、收藏、排行榜
+7. 增加 pytest 接口测试和 Playwright E2E
+8. 部署到线上：Vercel + Railway/Fly.io + Supabase + S3/R2/OSS
+9. 增加 GitHub/Google OAuth
+10. 扩展 Specialist Agent 能力（音乐音效、关卡设计等）
 
 ---
 
 ## 17. 最终落地判断
 
+> 以下为原计划验收点，实际实现状态均已超出预期：
+
 | 验收点 | 技术方案对应实现 |
 | --- | --- |
-| 登录注册 | Next.js Auth + Cookie Session / Auth.js / Better Auth |
-| 首页游戏流 | Next.js Home + Route Handlers + Prisma + PostgreSQL |
-| 至少 3 个示例游戏 | seed 2 个 + Create 生成发布 1 个 |
-| Play 动态加载远端文件 | `play-meta` 返回 MinIO manifest 和 bundle_base_url，iframe 加载远端 index.html |
-| Create 多模态输入 | Next.js 表单 + Route Handler 文件上传 + MinIO |
-| Multi-Agent 架构 | Python Agent 状态机 + agent_logs |
-| 对象存储 | MinIO + AWS SDK v3 / boto3，不用普通本地目录替代 |
-| 数据库存 meta | Prisma 模型保存 game、version、task、log |
-| 安全隔离 | iframe sandbox + 产物危险 API 校验 |
-| 可复现交付 | Docker Compose + `.env.example` + README + seed |
+| 登录注册 | Next.js Cookie Session + Session 表 ✅ |
+| 首页游戏流 | Next.js Home + Route Handlers + Prisma + PostgreSQL ✅ |
+| 至少 3 个示例游戏 | seed 2 个 + Create 生成发布 1 个（需执行 seed）✅ |
+| Play 动态加载远端文件 | `play-meta` 返回 MinIO manifest 和 bundle_base_url，iframe 加载远端 index.html ✅ |
+| Create 多模态输入 | Next.js 表单 + Route Handler 文件上传 + MinIO ✅ |
+| Multi-Agent 架构 | LangGraph StateGraph + Supervisor/SpecialistFanOut/TemplateWorkflow ✅ |
+| 流式日志 | FastAPI SSE + Next.js SSE 路由 + 前端实时写入 DB ✅ |
+| 对象存储 | MinIO + AWS SDK v3，不用普通本地目录替代 ✅ |
+| 数据库存 meta | Prisma 模型保存 game、version、task、log ✅ |
+| 安全隔离 | iframe sandbox + 产物危险 API 拦截（eval/Function/Storage/fetch）✅ |
+| 可复现交付 | Docker Compose + `.env.example` + seed ✅ |
+| LLM 可观测性 | LangSmith 集成 ✅（超出原计划）|
+| LLM 客户端 | 独立 app/llm/ 模块，OpenAI 兼容接口，完整降级策略 ✅（超出原计划）|
+| 本地 fallback | Next.js 端本地生成器（FastAPI 不可用时兜底）✅（超出原计划）|
 
-一句话：让 Next.js 承担业务主应用，让 FastAPI/Python 只承担 Agent 生成服务。这样既借鉴 HyperHit 的分层，又能把本任务最核心的“AI 生成产物远端加载游玩”闭环做扎实。
+> **本实现已超出原计划的技术方案，主要升级点：**
+> - 自研状态机 → LangGraph StateGraph（显式图工作流）
+> - 单次 HTTP 调用 → SSE 流式实时推送日志
+> - 模板生成 → Supervisor（LLM 意图分类）+ SpecialistFanOut（并行 Specialist）
+> - 无可观测性 → LangSmith 完整 trace
+

@@ -14,6 +14,7 @@ class GenerateRequest(BaseModel):
     user_id: str = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=2000)
     assets: list[GenerationAsset] = Field(default_factory=list)
+    # 不再由用户选择 generation_mode，由 Supervisor Agent 自动判断
 
 
 class ArtifactResponse(BaseModel):
@@ -29,9 +30,10 @@ class AgentLogResponse(BaseModel):
 
 
 class GenerateResponse(BaseModel):
-    status: Literal["succeeded", "failed"]
+    status: Literal["succeeded", "failed", "rejected"]
     title: str
     description: str
     tags: list[str]
-    artifact: ArtifactResponse
+    artifact: ArtifactResponse | None  # rejected 时为 None
     logs: list[AgentLogResponse]
+    supervisor_feedback: str | None  # rejected 时返回给用户的引导信息

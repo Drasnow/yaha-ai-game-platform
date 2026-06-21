@@ -95,7 +95,8 @@ model Game {
   author        User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
   versions      GameVersion[]    @relation("GameVersions")
   latestVersion GameVersion?     @relation("LatestGameVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
-  tasks         GenerationTask[]
+  tasks         GenerationTask[] @relation("RegenerateSource")
+  resultTasks   GenerationTask[]
   playEvents    PlayEvent[]
 
   @@index([authorId])
@@ -155,6 +156,7 @@ model GenerationTask {
   currentStep     String?              @map("current_step")
   resultGameId    String?              @map("result_game_id")
   resultVersionId String?              @unique @map("result_version_id")
+  sourceGameId    String?              @map("source_game_id")
   errorMessage    String?              @map("error_message") @db.Text
   modelTokens     Int?                 @map("model_tokens")
   estimatedCost   Decimal?             @map("estimated_cost") @db.Decimal(10, 4)
@@ -165,12 +167,14 @@ model GenerationTask {
   resultGame     Game?         @relation(fields: [resultGameId], references: [id], onDelete: SetNull)
   resultVersion  GameVersion?  @relation("TaskResultVersion", fields: [resultVersionId], references: [id], onDelete: SetNull)
   sourceVersions GameVersion[] @relation("TaskSourceVersion")
+  sourceGame     Game?         @relation("RegenerateSource", fields: [sourceGameId], references: [id], onDelete: SetNull)
   assets         Asset[]
   agentLogs      AgentLog[]
 
   @@index([userId, createdAt])
   @@index([status])
   @@index([resultGameId])
+  @@index([sourceGameId])
   @@map("generation_tasks")
 }
 

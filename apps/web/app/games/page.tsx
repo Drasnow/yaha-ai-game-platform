@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { EditGameButton } from "@/components/game-card-actions";
+import { DeleteGameButton } from "@/components/delete-game-button";
 import { PublishGameButton } from "@/components/publish-game-button";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -43,7 +45,7 @@ export default async function GamesPage() {
       <section className="mx-auto mt-14 max-w-6xl">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm text-indigo-300">已登录：{user.displayName ?? user.email}</p>
+            {/* <p className="text-sm text-indigo-300">已登录：{user.displayName ?? user.email}</p> */}
             <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-6xl">
               我的游戏
             </h1>
@@ -81,7 +83,7 @@ export default async function GamesPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs text-indigo-200">
-                    {game.status}
+                    {game.status === "DRAFT" ? "草稿" : "已发布"}
                   </span>
                   <span className="text-xs text-zinc-500">游玩 {game.playCount}</span>
                 </div>
@@ -105,21 +107,17 @@ export default async function GamesPage() {
                 </div>
 
                 <div className="mt-6 border-t border-white/10 pt-4 text-xs leading-5 text-zinc-500">
-                  <p>ID：{game.id}</p>
+                  {/* <p>ID：{game.id}</p> */}
                   <p>创建：{formatDate(game.createdAt)}</p>
                   <p>更新：{formatDate(game.updatedAt)}</p>
                 </div>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link
-                    href={`/play/${game.id}${game.status === "DRAFT" ? "?preview=1" : ""}`}
-                    className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-400"
-                  >
-                    {game.status === "DRAFT" ? "预览草稿" : "游玩"}
-                  </Link>
-                  {game.status === "DRAFT" ? (
+                <EditGameButton game={game} />
+                {game.status === "DRAFT" ? (
+                  <div className="mt-3 flex items-center gap-3">
                     <PublishGameButton gameId={game.id} disabled={!game.latestVersionId} />
-                  ) : null}
-                </div>
+                    <DeleteGameButton gameId={game.id} gameTitle={game.title} />
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>

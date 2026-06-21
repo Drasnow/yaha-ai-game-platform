@@ -176,7 +176,7 @@ export function PlayClient({ gameId, preview, user }: PlayClientProps) {
             ))}
           </div>
 
-          <div className="mt-8 space-y-4 rounded-2xl border border-white/10 bg-zinc-900 p-4 text-xs leading-5 text-zinc-400">
+          {/* <div className="mt-8 space-y-4 rounded-2xl border border-white/10 bg-zinc-900 p-4 text-xs leading-5 text-zinc-400">
             <p className="text-sm font-medium text-zinc-200">V2.7 Play 动态加载与事件埋点</p>
             {playData ? (
               <>
@@ -189,7 +189,7 @@ export function PlayClient({ gameId, preview, user }: PlayClientProps) {
             ) : (
               <p>页面会先请求 `/api/v1/games/{gameId}/play-meta`，再用返回的 entryUrl 加载 iframe。</p>
             )}
-          </div>
+          </div> */}
         </aside>
 
         <section className="relative rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">

@@ -43,7 +43,7 @@ export default async function Home() {
             发现由 AI 驱动的互动小游戏
           </h1>
           <p className="mt-6 text-lg leading-8 text-zinc-300">
-            每天都有创作者通过自然语言和 AI Agent 生成新的互动游戏。探索、游玩，或用你自己的创意生成独一无二的作品。
+            每天都有创作者用AI生成互动游戏，开始探索、游玩或创意生成自己独一无二的游戏作品吧！
           </p>
         </div>
 
