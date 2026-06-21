@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ type PlayMetaResponse = {
     coverUrl: string | null;
     tags: string[];
     status: string;
+    isPreview: boolean;
     author: {
       id: string;
       displayName: string | null;
@@ -34,9 +35,10 @@ type PlayEventType = "load_start" | "load_success" | "load_failed" | "play_start
 
 type PlayClientProps = {
   gameId: string;
+  preview: boolean;
 };
 
-export function PlayClient({ gameId }: PlayClientProps) {
+export function PlayClient({ gameId, preview }: PlayClientProps) {
   const [playData, setPlayData] = useState<PlayMetaResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading-meta");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -80,7 +82,8 @@ export function PlayClient({ gameId }: PlayClientProps) {
       playStartReportedRef.current = false;
 
       try {
-        const response = await fetch(`/api/v1/games/${gameId}/play-meta`, {
+        const query = preview ? "?preview=1" : "";
+        const response = await fetch(`/api/v1/games/${gameId}/play-meta${query}`, {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -109,7 +112,7 @@ export function PlayClient({ gameId }: PlayClientProps) {
     loadPlayMeta();
 
     return () => controller.abort();
-  }, [gameId, reportPlayEvent]);
+  }, [gameId, preview, reportPlayEvent]);
 
   const isLoading = loadState === "loading-meta" || loadState === "loading-frame";
 
@@ -120,7 +123,7 @@ export function PlayClient({ gameId }: PlayClientProps) {
           ← 返回首页
         </Link>
         <Link
-          href={`/api/v1/games/${gameId}/play-meta`}
+          href={`/api/v1/games/${gameId}/play-meta${preview ? "?preview=1" : ""}`}
           className="text-sm text-indigo-300 transition hover:text-indigo-100"
         >
           查看 play-meta JSON
@@ -129,7 +132,14 @@ export function PlayClient({ gameId }: PlayClientProps) {
 
       <section className="mx-auto mt-12 grid max-w-6xl gap-8 lg:grid-cols-[0.9fr_1.1fr]">
         <aside className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20">
-          <p className="text-sm text-indigo-300">{playData?.game.status ?? "LOADING"}</p>
+          <p className="text-sm text-indigo-300">
+            {playData?.game.isPreview ? "PREVIEW · DRAFT" : playData?.game.status ?? "LOADING"}
+          </p>
+          {playData?.game.isPreview ? (
+            <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              当前为草稿预览，仅作者可访问；发布后才会进入首页列表。
+            </p>
+          ) : null}
           <h1 className="mt-4 text-4xl font-semibold tracking-tight">
             {playData?.game.title ?? "正在加载游戏"}
           </h1>

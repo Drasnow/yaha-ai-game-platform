@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify:play-events": "tsx scripts/verify-play-events.ts"
+    "verify:play-events": "tsx scripts/verify-play-events.ts",
+    "verify:generation-tasks": "tsx scripts/verify-generation-tasks.ts",
+    "verify:v38-db-write": "tsx scripts/verify-v38-db-write.ts",
+    "verify:v39-preview-publish": "tsx scripts/verify-v39-preview-publish.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1072.0",

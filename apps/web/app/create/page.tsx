@@ -25,10 +25,10 @@ export default async function CreatePage() {
         <div className="max-w-3xl">
           <p className="text-sm text-indigo-300">已登录：{user.displayName ?? user.email}</p>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-6xl">
-            创建游戏草稿
+            Create：AI 生成互动游戏
           </h1>
           <p className="mt-6 text-lg leading-8 text-zinc-300">
-            填写标题、简介和玩法类型，先把游戏基础信息保存到 games 表。
+            输入游戏创意并选择素材，触发 FastAPI Agent 生成任务；页面会展示任务进度、Agent 日志、预览入口和发布操作。
           </p>
         </div>
 

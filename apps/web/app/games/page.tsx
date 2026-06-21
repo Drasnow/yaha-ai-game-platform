@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LogoutButton } from "@/components/logout-button";
+import { PublishGameButton } from "@/components/publish-game-button";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -34,6 +35,7 @@ export default async function GamesPage() {
       playCount: true,
       createdAt: true,
       updatedAt: true,
+      latestVersionId: true,
     },
   });
 
@@ -114,6 +116,17 @@ export default async function GamesPage() {
                   <p>ID：{game.id}</p>
                   <p>创建：{formatDate(game.createdAt)}</p>
                   <p>更新：{formatDate(game.updatedAt)}</p>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Link
+                    href={`/play/${game.id}${game.status === "DRAFT" ? "?preview=1" : ""}`}
+                    className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-400"
+                  >
+                    {game.status === "DRAFT" ? "预览草稿" : "游玩"}
+                  </Link>
+                  {game.status === "DRAFT" ? (
+                    <PublishGameButton gameId={game.id} disabled={!game.latestVersionId} />
+                  ) : null}
                 </div>
               </article>
             ))}
