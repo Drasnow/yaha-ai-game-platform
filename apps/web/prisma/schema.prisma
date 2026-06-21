@@ -149,6 +149,7 @@ model Asset {
 model GenerationTask {
   id              String               @id @default(cuid())
   userId          String               @map("user_id")
+  title           String               @map("title") @default("")
   prompt          String               @db.Text
   status          GenerationTaskStatus @default(PENDING)
   currentStep     String?              @map("current_step")

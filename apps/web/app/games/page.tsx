@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { LogoutButton } from "@/components/logout-button";
 import { PublishGameButton } from "@/components/publish-game-button";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -41,13 +40,6 @@ export default async function GamesPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
-        <Link href="/" className="text-sm text-zinc-400 transition hover:text-white">
-          ← 返回首页
-        </Link>
-        <LogoutButton />
-      </div>
-
       <section className="mx-auto mt-14 max-w-6xl">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>

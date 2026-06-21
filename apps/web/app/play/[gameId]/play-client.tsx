@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type User = { id: string; displayName: string | null; email: string } | null;
+
 type PlayMetaResponse = {
   game: {
     id: string;
@@ -36,9 +38,10 @@ type PlayEventType = "load_start" | "load_success" | "load_failed" | "play_start
 type PlayClientProps = {
   gameId: string;
   preview: boolean;
+  user: User;
 };
 
-export function PlayClient({ gameId, preview }: PlayClientProps) {
+export function PlayClient({ gameId, preview, user }: PlayClientProps) {
   const [playData, setPlayData] = useState<PlayMetaResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading-meta");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -118,16 +121,35 @@ export function PlayClient({ gameId, preview }: PlayClientProps) {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
-        <Link href="/" className="text-sm text-zinc-400 transition hover:text-white">
-          ← 返回首页
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between text-sm">
+        <Link href="/" className="text-zinc-400 transition hover:text-white">
+          ← 首页
         </Link>
-        <Link
-          href={`/api/v1/games/${gameId}/play-meta${preview ? "?preview=1" : ""}`}
-          className="text-sm text-indigo-300 transition hover:text-indigo-100"
-        >
-          查看 play-meta JSON
-        </Link>
+        <div className="flex items-center gap-4">
+          {playData?.game.isPreview && (
+            <Link
+              href="/games"
+              className="text-zinc-400 transition hover:text-white"
+            >
+              ← 我的游戏
+            </Link>
+          )}
+          {user && (
+            <Link
+              href="/create"
+              className="text-indigo-300 transition hover:text-indigo-100"
+            >
+              + 新建游戏
+            </Link>
+          )}
+          <Link
+            href={`/api/v1/games/${gameId}/play-meta${preview ? "?preview=1" : ""}`}
+            className="ml-2 text-zinc-600 transition hover:text-zinc-400"
+            target="_blank"
+          >
+            play-meta ↗
+          </Link>
+        </div>
       </div>
 
       <section className="mx-auto mt-12 grid max-w-6xl gap-8 lg:grid-cols-[0.9fr_1.1fr]">

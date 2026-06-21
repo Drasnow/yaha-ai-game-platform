@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CreateGameForm } from "@/components/create-game-form";
-import { LogoutButton } from "@/components/logout-button";
 import { getCurrentUser } from "@/lib/auth";
 
 export default async function CreatePage() {
@@ -14,13 +13,6 @@ export default async function CreatePage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
-        <Link href="/" className="text-sm text-zinc-400 transition hover:text-white">
-          ← 返回首页
-        </Link>
-        <LogoutButton />
-      </div>
-
       <section className="mx-auto mt-14 max-w-6xl">
         <div className="max-w-3xl">
           <p className="text-sm text-indigo-300">已登录：{user.displayName ?? user.email}</p>

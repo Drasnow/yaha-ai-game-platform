@@ -7,13 +7,15 @@ import {
 } from "../lib/generation-tasks";
 
 const parsed = generationTaskCreateSchema.parse({
+  title: "星星大战",
   prompt: "  做一个点击星星得分小游戏  ",
   assetIds: ["asset_1", "asset_1", "asset_2"],
 });
 
+assert.equal(parsed.title, "星星大战");
 assert.equal(parsed.prompt, "做一个点击星星得分小游戏");
 assert.deepEqual(parsed.assetIds, ["asset_1", "asset_2"]);
-assert.equal(generationTaskCreateSchema.safeParse({ prompt: "hi" }).success, false);
+assert.equal(generationTaskCreateSchema.safeParse({ title: "", prompt: "hi" }).success, false);
 
 const logs = normalizeAgentLogs([
   { agent_name: "RequirementAgent", step: "parse_prompt", message: "已解析创意" },
@@ -27,6 +29,7 @@ assert.deepEqual(logs, [
 
 const response = buildGenerationTaskResponse({
   id: "task_1",
+  title: parsed.title,
   prompt: parsed.prompt,
   status: "SUCCEEDED",
   currentStep: "complete",

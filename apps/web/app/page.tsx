@@ -1,6 +1,5 @@
 ﻿import Link from "next/link";
 
-import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date | null) {
@@ -16,7 +15,6 @@ function formatDate(date: Date | null) {
 }
 
 export default async function Home() {
-  const user = await getCurrentUser();
   const games = await prisma.game.findMany({
     where: { status: "PUBLISHED" },
     orderBy: { publishedAt: "desc" },
@@ -39,49 +37,13 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
-      <nav className="mx-auto flex w-full max-w-6xl items-center justify-between">
-        <Link href="/" className="font-semibold tracking-tight">
-          Yaha AI Game Platform
-        </Link>
-        <div className="flex items-center gap-3 text-sm">
-          {user ? (
-            <>
-              <Link href="/games" className="text-zinc-300 transition hover:text-white">
-                我的游戏
-              </Link>
-              <Link
-                href="/create"
-                className="rounded-full bg-indigo-500 px-4 py-2 font-medium transition hover:bg-indigo-400"
-              >
-                新建游戏
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link href="/login" className="text-zinc-300 transition hover:text-white">
-                登录
-              </Link>
-              <Link
-                href="/register"
-                className="rounded-full bg-indigo-500 px-4 py-2 font-medium transition hover:bg-indigo-400"
-              >
-                免费注册
-              </Link>
-            </>
-          )}
-        </div>
-      </nav>
-
-      <section className="mx-auto mt-16 max-w-6xl">
+      <section className="mx-auto mt-8 max-w-6xl">
         <div className="max-w-3xl">
-          <p className="w-fit rounded-full border border-white/10 px-4 py-1 text-sm text-zinc-300">
-            V1.8 · 数据库示例游戏
-          </p>
-          <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-6xl">
-            浏览、发布和游玩 AI 互动小游戏
+          <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
+            发现由 AI 驱动的互动小游戏
           </h1>
           <p className="mt-6 text-lg leading-8 text-zinc-300">
-            首页展示数据库中 published 状态的游戏。点击卡片进入 Play 页面，读取后端 play-meta 展示远端产物地址。
+            每天都有创作者通过自然语言和 AI Agent 生成新的互动游戏。探索、游玩，或用你自己的创意生成独一无二的作品。
           </p>
         </div>
 

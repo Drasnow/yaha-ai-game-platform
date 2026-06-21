@@ -37,6 +37,7 @@ async function main() {
 
   const taskSelect = {
     id: true,
+    title: true,
     prompt: true,
     status: true,
     currentStep: true,
@@ -62,6 +63,7 @@ async function main() {
       prisma,
       taskSelect,
       user,
+      title: "V3.8 数据库写入验证游戏",
       prompt: "做一个点击星星得分的小游戏，30 秒内尽量多得分",
       assetIds: [],
       assets: [],
@@ -111,6 +113,7 @@ async function main() {
       prisma,
       taskSelect,
       user,
+      title: "失败验证游戏",
       prompt: "做一个会失败的生成任务",
       assetIds: [],
       assets: [],

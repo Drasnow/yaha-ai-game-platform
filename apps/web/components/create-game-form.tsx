@@ -87,8 +87,15 @@ export function CreateGameForm() {
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const title = String(formData.get("title") ?? "").trim();
     const prompt = String(formData.get("prompt") ?? "").trim();
     const file = formData.get("asset");
+
+    if (title.length < 1) {
+      setTaskStatus("failed");
+      setMessage("游戏名称不能为空。");
+      return;
+    }
 
     if (prompt.length < 10) {
       setTaskStatus("failed");
@@ -125,7 +132,7 @@ export function CreateGameForm() {
         await fetch("/api/v1/generation-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, assetIds }),
+          body: JSON.stringify({ title, prompt, assetIds }),
         }),
       );
 
@@ -137,7 +144,7 @@ export function CreateGameForm() {
         ([
           {
             id: task.id,
-            title: prompt.slice(0, 28),
+            title: title,
             status: task.status,
             createdAt: new Date(task.createdAt).toLocaleString("zh-CN"),
             resultGameId: task.resultGameId,
@@ -195,6 +202,17 @@ export function CreateGameForm() {
         </div>
 
         <div className="mt-8 space-y-6">
+          <label className="block space-y-2 text-sm">
+            <span className="text-zinc-300">游戏名称</span>
+            <input
+              name="title"
+              required
+              maxLength={100}
+              className="w-full rounded-2xl border border-white/10 bg-zinc-900 px-4 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-indigo-400"
+              placeholder="给你的游戏起个名字"
+            />
+          </label>
+
           <label className="block space-y-2 text-sm">
             <span className="text-zinc-300">创意文本</span>
             <textarea

@@ -977,6 +977,63 @@ git commit -m "feat: complete create agent publish play loop"
 
 ---
 
+# MVP：前端细节调整
+
+## MVP.1 调整目标
+
+在 V3 完整链路打通后，对前端交互和 UI 细节进行收尾打磨，提升用户体验。
+
+## MVP.2 已完成的调整
+
+### 导航栏精简
+
+- **改动文件**：`apps/web/components/site-header.tsx`
+- **内容**：删除了用户已登录状态下右上角的"新建游戏"按钮。该入口在"我的游戏"页面内已存在，导航栏重复放置导致界面冗余。
+
+### 新建游戏页面增加游戏名称输入
+
+- **改动文件**：`apps/web/components/create-game-form.tsx`
+- **内容**：在"创意文本"输入框上方新增"游戏名称"文本框，对应数据库 `games.title` 字段。用户必须填写游戏名称后才能提交。
+- **表单改动**：
+  - 新增 `name="title"` 的 `<input>` 字段，必填，最大 100 字
+  - 提交前增加非空校验
+  - POST 请求体加入 `title` 字段
+
+### API 层适配
+
+- **改动文件**：`apps/web/lib/generation-tasks.ts`、`apps/web/app/api/v1/generation-tasks/route.ts`、`apps/web/app/api/v1/generation-tasks/[taskId]/route.ts`
+- **内容**：
+  - `generationTaskCreateSchema` 增加 `title` 必填字段（1-100字）
+  - 响应序列化（`serializeGenerationTask`）增加 `title` 字段
+  - 两个 API route 的 `taskSelect` 均加入 `title: true`
+
+### 任务执行层适配
+
+- **改动文件**：`apps/web/lib/generation-task-runner.ts`
+- **内容**：
+  - `createAndRunGenerationTask` 函数参数增加 `title: string`
+  - `prisma.generationTask.create` 时写入 `title` 字段
+  - `tx.game.create` 创建游戏时直接使用用户传入的 `title`，不再依赖 Agent 返回值
+
+### 数据库 Schema
+
+- **改动文件**：`apps/web/prisma/schema.prisma`
+- **内容**：`GenerationTask` 模型新增 `title String @map("title") @default("")` 字段（已有数据默认为""）
+
+### 验证脚本同步
+
+- **改动文件**：`apps/web/scripts/verify-generation-tasks.ts`、`apps/web/scripts/verify-v38-db-write.ts`
+- **内容**：测试用例同步适配新增的 `title` 参数
+
+## MVP.3 提交建议
+
+```bash
+git add .
+git commit -m "feat: add game title input to create page and clean up nav"
+```
+
+---
+
 # V4：交付验收、文档、稳定性修复
 
 ## V4.1 版本目标

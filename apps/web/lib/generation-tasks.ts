@@ -15,6 +15,7 @@ export type AgentLogInput = {
 };
 
 export const generationTaskCreateSchema = z.object({
+  title: z.string().trim().min(1, "游戏名称不能为空").max(100, "游戏名称不能超过 100 个字"),
   prompt: z.string().trim().min(10, "创意描述至少需要 10 个字").max(2000, "创意描述不能超过 2000 个字"),
   assetIds: z
     .array(z.string().trim().min(1))
@@ -33,6 +34,7 @@ export function normalizeAgentLogs(logs: AgentLogInput[]) {
 
 type GenerationTaskForResponse = {
   id: string;
+  title: string;
   prompt: string;
   status: keyof typeof taskStatusMap;
   currentStep: string | null;
@@ -46,6 +48,7 @@ type GenerationTaskForResponse = {
 export function serializeGenerationTask(task: GenerationTaskForResponse) {
   return {
     id: task.id,
+    title: task.title,
     prompt: task.prompt,
     status: taskStatusMap[task.status],
     currentStep: task.currentStep,

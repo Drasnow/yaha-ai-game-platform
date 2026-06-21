@@ -15,6 +15,7 @@ type AssetForAgent = {
 
 type TaskSelect = {
   readonly id: true;
+  readonly title: true;
   readonly prompt: true;
   readonly status: true;
   readonly currentStep: true;
@@ -27,10 +28,24 @@ type TaskSelect = {
 
 type GenerateGameWithAgent = typeof generateGameWithAgent;
 
+type TaskResult = {
+  id: string;
+  title: string;
+  prompt: string;
+  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  currentStep: string | null;
+  resultGameId: string | null;
+  resultVersionId: string | null;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export async function createAndRunGenerationTask({
   prisma,
   taskSelect,
   user,
+  title,
   prompt,
   assetIds,
   assets,
@@ -39,14 +54,16 @@ export async function createAndRunGenerationTask({
   prisma: PrismaClient;
   taskSelect: TaskSelect;
   user: CurrentUser;
+  title: string;
   prompt: string;
   assetIds: string[];
   assets: AssetForAgent[];
   generate?: GenerateGameWithAgent;
-}) {
+}): Promise<TaskResult> {
   let task = await prisma.generationTask.create({
     data: {
       userId: user.id,
+      title,
       prompt,
       status: "PENDING",
       currentStep: "queued",
@@ -93,7 +110,7 @@ export async function createAndRunGenerationTask({
       const game = await tx.game.create({
         data: {
           authorId: user.id,
-          title: agentResult.title,
+          title,
           description: agentResult.description,
           tags: agentResult.tags,
           status: "DRAFT",

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const taskSelect = {
   id: true,
+  title: true,
   prompt: true,
   status: true,
   currentStep: true,

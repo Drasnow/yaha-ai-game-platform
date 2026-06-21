@@ -67,7 +67,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       return;
     }
 
-    router.push("/create");
+    router.push("/games");
     router.refresh();
   }
 

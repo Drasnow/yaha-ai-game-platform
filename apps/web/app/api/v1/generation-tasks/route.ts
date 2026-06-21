@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 
 const taskSelect = {
   id: true,
+  title: true,
   prompt: true,
   status: true,
   currentStep: true,
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
     prisma,
     taskSelect,
     user,
+    title: parsed.data.title,
     prompt: parsed.data.prompt,
     assetIds: parsed.data.assetIds,
     assets,
