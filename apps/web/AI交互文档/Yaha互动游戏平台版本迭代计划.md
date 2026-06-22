@@ -1253,25 +1253,42 @@ git commit -m "docs: prepare delivery materials and validation checklist"
 
 ## V5.2 推荐增强顺序（更新）
 
-|| 优先级 | 功能 | 价值 | 风险 | 状态 |
-|| --- | --- | --- | --- | --- |
-|| P1 | 搜索、标签筛选 | Home 体验提升 | 低 | 待实现 |
-|| P1 | 游玩次数统计 | Play 加分项 | 低 | 待实现 |
-|| P1 | 任务历史列表 | Create 加分项 | 低 | 待实现 |
-|| P2 | 失败重试 | 提升稳定性 | 中 | **已实现**（`retry_workflow.py`） |
-|| P2 | GitHub OAuth | Auth 加分项 | 中 | 待实现 |
-|| P2 | 点赞/收藏 | 平台感更强 | 中 | 待实现 |
-|| P3 | Redis Queue / RabbitMQ | 更真实异步任务 | 中高 | 待实现 |
-|| P3 | 接入真实 LLM | AI Native | 中高 | **已实现**（`app/llm/` 模块） |
-|| P3 | Docker Compose 一键启动 | 交付体验 | 中 | 待实现 |
-|| P4 | LangGraph | Agent 编排 | - | **已实现**（超出计划） |
-|| P4 | LangSmith | 可观测性 | - | **已实现**（超出计划） |
-|| P4 | SSE 流式日志 | 实时日志 | - | **已实现**（超出计划） |
-|| P4 | Docker/Firecracker 沙箱 | 安全加分 | 高 | 待实现 |
-|| P4 | Remix 派生、版本管理 | 产品完整度 | 高 | 待实现 |
+### 5A — Agent 微服务增强（LangGraph 深度功能）
 
+||| 优先级 | 功能 | 价值 | 风险 | 状态 |
+||| --- | --- | --- | --- | --- |
+||| P0 | 持久化检查点（Redis/Postgres Saver） | 生成中途崩溃可恢复，不丢进度 | 低 | 待实现 |
+||| P0 | 请求取消（Request Cancellation） | 客户端断连立即停止 Agent，节省 LLM 费用 | 低 | 待实现 |
+||| P0 | 背景 Worker 模式 | `/generate` 立即返回 taskId，后台执行，前端轮询 | 低 | 待实现 |
+||| P1 | Human-in-the-Loop 中断 | 设计规范确认后再生成代码，用户可干预 | 中 | 待实现 |
+||| P1 | LLM Token 级流式输出 | 替换节点 SSE 为逐 token 流，用户实时看代码生成 | 低 | 待实现 |
+||| P1 | 原生 Structured Output | OpenAI `response_format=json_schema` / Anthropic Tool Use | 低 | 待实现 |
+||| P2 | Prometheus 可观测性 | Token 用量、延迟、错误率、并发数等指标 | 低 | 待实现 |
+||| P2 | 多轮 Session Memory | 同用户多轮迭代时 Agent 保留上下文 | 中 | 待实现 |
+||| P3 | LangChain @tool / tool_definitions | Specialist Agent schema 校验和工具调用协议 | 中 | 待实现 |
+||| P3 | LLM-based 内容安全分类器 | NSFW / 恶意代码检测，过滤生成内容 | 中 | 待实现 |
+||| P4 | Docker 沙箱执行生成过程 | Agent 在临时容器隔离执行，杜绝危险操作 | 高 | 待实现 |
 
-## V5.3 搜索和标签筛选
+### 5B — 前端 + 后端 Web App 增强
+
+||| 优先级 | 功能 | 价值 | 风险 | 状态 |
+||| --- | --- | --- | --- | --- |
+||| P0 | Play iframe 加载修复 | MinIO public policy + Presigned URL fallback | 低 | 待实现 |
+||| P0 | 首页搜索 + 标签筛选 | 游戏发现体验升级，支持模糊搜索 | 低 | 待实现 |
+||| P1 | Playwright E2E 测试 | 覆盖登录→Create→发布→Play 全链路 | 低 | 待实现 |
+||| P1 | Google / GitHub OAuth | 社交账号一键登录，降低注册门槛 | 中 | 待实现 |
+||| P1 | 游玩次数统计 + 排行榜 | Play 加载上报事件，首页展示最热游戏 | 低 | 待实现 |
+||| P1 | 点赞 / 收藏功能 | 用户粘性提升，支持个人游戏库 | 低 | 待实现 |
+||| P2 | Redis 缓存层 | 热门游戏列表 / Session 缓存，降低 DB 压力 | 中 | 待实现 |
+||| P2 | CDN 托管生成文件 | 生成的游戏文件走 CDN，提升加载速度 | 低 | 待实现 |
+||| P2 | 数据库连接池调优（PgBouncer） | 减少连接开销，提升并发吞吐 | 中 | 待实现 |
+||| P2 | API 限流（Rate Limiting） | 按用户/IP 对高消耗接口限流，防滥用 | 低 | 待实现 |
+||| P3 | 任务历史 + 重试 UI | Create 页面展示历史任务，失败一键重试 | 低 | 待实现 |
+||| P3 | 游戏版本管理 | 同一游戏多次生成自动保存历史版本，支持回滚 | 中 | 待实现 |
+||| P3 | Docker Compose 生产部署文档 | Nginx 反代 + HTTPS + 自动证书续期 | 低 | 待实现 |
+||| P4 | 前端性能优化 | SSR/ISR、代码分割、懒加载、WebP 图片压缩 | 低 | 待实现 |
+
+## V5.3 搜索和标签筛选（5B）
 
 实现：
 
@@ -1286,7 +1303,7 @@ git commit -m "docs: prepare delivery materials and validation checklist"
 curl 'http://localhost:3000/api/v1/games?query=星星'
 ```
 
-## V5.4 游玩次数统计
+## V5.4 游玩次数统计（5B）
 
 实现：
 
@@ -1300,7 +1317,7 @@ curl 'http://localhost:3000/api/v1/games?query=星星'
 2. 回到 Home。
 3. 游玩次数增加。
 
-## V5.5 任务历史和失败重试
+## V5.5 任务历史和失败重试（5B）
 
 实现：
 
@@ -1315,7 +1332,7 @@ curl 'http://localhost:3000/api/v1/games?query=星星'
 - 页面显示 failed。
 - 点击 retry 后重新进入 running。
 
-## V5.6 GitHub OAuth
+## V5.6 GitHub OAuth（5B）
 
 实现前提：已有 `oauth_accounts` 表。
 
@@ -1342,59 +1359,113 @@ GITHUB_CLIENT_SECRET=""
 - 回调后站内处于登录态。
 - `oauth_accounts` 有绑定记录。
 
-## V5.7 Redis Queue / RabbitMQ 异步任务
+## V5.7 背景 Worker 模式（5A） + Redis 队列（5B）
 
-MVP 中 Next.js 直接 HTTP 调 FastAPI，简单但请求可能较长。增强版可以：
+MVP 中 Next.js 直接 HTTP 调 FastAPI，请求在请求生命周期内同步完成。增强版改为：
 
-- Next.js 只创建任务。
-- Worker 消费任务。
-- FastAPI 或 Python Worker 执行生成。
-- 前端轮询任务状态。
+**Agent 侧（5A）：**
 
-推荐先用 Redis Queue，复杂度低于 RabbitMQ。
+- `/generate` 改为立即返回 taskId（HTTP 202 Accepted）。
+- Agent 执行移入后台 asyncio Task。
+- 前端通过 SSE 或轮询 `/generate/{taskId}/status` 获取结果。
+- 支持客户端断连时的 `Request Cancellation`（检查 `asyncio.cancelled()`）。
+
+**Web App 侧（5B）：**
+
+- Next.js 只负责创建任务和展示结果，不阻塞请求。
+- 任务状态持久化到数据库（增加 `generation_tasks` 表）。
+- 前端轮询任务状态变化。
+
+推荐先用 Redis Queue（复杂度低于 RabbitMQ），后续可扩展为 Celery + Redis。
 
 验收：
 
 - 创建任务 API 立即返回 taskId。
 - Worker 后台处理。
 - 页面轮询看到状态变化。
+- 断连后 Agent 停止工作（取消）。
 
-## V5.8 接入真实 LLM
+## V5.8 接入真实 LLM（5A）
 
-在现有 Agent 状态机中，把模板选择和文案生成替换为 LLM 调用：
+> ✅ 已实现 — `app/llm/` 模块已接入 OpenAI/Anthropic 等模型提供商，配置 `.env` 中的 `MODEL_*` 变量即可切换。
 
-- RequirementAgent 调 LLM 提取结构化需求。
-- GameDesignAgent 调 LLM 生成玩法 JSON。
-- CodeGenerationAgent 仍建议模板化，不建议完全自由生成任意 JS。
-- BuildValidateAgent 必须保留，防止危险代码。
+当前 Agent 通过 Specialist Agent（Vision / Gameplay / Narrative）分工调用 LLM，每个节点独立 `generate_json`，有指数退避重试和模板兜底。
 
-`.env` 示例：
+进一步增强方向：
 
-```env
-MODEL_PROVIDER="openai-compatible"
-MODEL_BASE_URL=""
-MODEL_API_KEY=""
-MODEL_NAME=""
-MOCK_AGENT_MODE="false"
-```
+- **原生 Structured Output**：改用 OpenAI `response_format=json_schema` / Anthropic Tool Use，替代 prompt-based JSON，提升解析成功率并减少 token 消耗。
+- **LLM Token 级流式输出**：接入 `astream_events`，在 Specialist 节点输出时逐 token 流式推送，用户实时看到代码出现。
+- **多轮 Session Memory**：接入 LangChain `BaseChatMessageHistory`，同用户多轮迭代同一游戏时 Agent 保留上下文。
+
+## V5.9 持久化检查点与 Human-in-the-Loop（5A）
+
+当前每个生成请求独立执行，中途崩溃则进度全丢。增强方案：
+
+**持久化检查点（Checkpointing）：**
+
+- 接入 LangGraph 内置的 `RedisSaver` 或 `PostgresSaver`：
+  ```python
+  from langgraph.checkpoint.postgres import PostgresSaver
+  checkpointer = PostgresSaver.from_conn_string(DATABASE_URL)
+  graph = builder.compile(checkpointer=checkpointer)
+  ```
+- 每个节点完成后自动快照，崩溃后凭 `thread_id` 恢复，继续执行剩余节点。
+- 同时实现"时间旅行"调试：支持回看任意中间状态。
+
+**Human-in-the-Loop 中断：**
+
+- 在 `synthesis_agent` 节点后插入 `interrupt()`，让用户确认设计规范后再继续：
+  ```python
+  from langgraph.types import interrupt, Command
+
+  def synthesis_agent(state: GenerationState) -> GenerationState:
+      spec = synthesize_specialist_results(state)
+      interrupt("请确认游戏设计规范：是否继续生成代码？")
+      return {"game_spec": spec}
+  ```
+- 前端 `/create` 页面弹出确认 Dialog，用户点击后调用 `Command(resume={"approved": True})` 继续。
 
 验收：
 
-- 不同 prompt 能生成不同标题、规则、颜色和文案。
-- 失败时自动 fallback 到模板生成。
+- 人为注入进程崩溃后，任务从上一个检查点恢复。
+- 设计规范确认 Dialog 出现，审批后代码生成继续。
 
-## V5.9 沙箱升级
+## V5.10 沙箱升级与内容安全（5A）
 
-MVP 用 iframe sandbox。增强版可以：
+**当前安全层（已实现）：**
 
-- 生成代码只允许静态文件。
-- 构建校验中使用更严格 AST 扫描。
-- 服务器端生成过程在 Docker 临时容器中执行。
-- 更高阶可研究 Firecracker，但 2 天任务不建议做。
+- `validator.py` 使用 `eval` 安全隔离、`Function()` 构造沙箱、`fetch` 限制内网访问。
+- HTML 文件内容校验，防止脚本注入。
 
-## V5.10 V5 验收清单
+**待增强（5A）：**
+
+- **Docker 沙箱执行**：Agent 生成过程在临时 Docker 容器中隔离执行（`docker run --rm --read-only`），彻底杜绝文件系统操作和内网访问。
+- **LLM-based 内容分类器**：Prompt 注入检测（如系统 prompt 泄露尝试）、生成内容 NSFW 分类（可接入 OpenAI Moderation API 或自部署模型）。
+- **LangChain `@tool` 迁移**：将 Specialist Agent 从 prompt-based JSON 迁移至 `@tool` / `tool_definitions`，获得 schema 校验和工具调用协议，减少 LLM 幻觉导致的解析错误。
+
+**Web App 侧（5B）：**
+
+- iframe `sandbox` 属性精细化配置（限制脚本执行、网络访问、表单提交等）。
+- 上传内容速率限制，防止滥用存储。
+
+## V5.11 可观测性增强（5A）
+
+当前已有 LangSmith `@traceable` 装饰器追踪 LLM 调用。生产级部署需补充：
+
+- **Prometheus 指标**：Token 用量计数器、`/generate` 端到端延迟直方图、并发活跃任务数、错误率。
+- **OpenTelemetry 集成**：跨服务分布式追踪（Next.js → FastAPI → LLM Provider）。
+- **结构化日志**：统一 JSON 日志格式，字段包含 `task_id`、`user_id`、`node_name`、`duration_ms`，便于日志聚合分析。
+
+验收：
+
+- Prometheus `/metrics` 端点暴露关键指标。
+- Grafana 仪表盘展示 Token 消耗趋势和错误率。
+
+## V5.12 V5 验收清单
 
 - [ ] MVP 已稳定完成后才开始 V5。
+- [ ] 所有 P0 功能已通过手动验收。
+- [ ] 新增功能有对应单元 / 集成测试。
 - [ ] 每个增强功能独立 commit。
 - [ ] completion-report 中明确哪些属于 MVP 外增强。
 - [ ] 不因增强功能破坏 Create → Play 核心闭环。

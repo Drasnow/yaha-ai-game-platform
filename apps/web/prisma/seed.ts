@@ -29,6 +29,15 @@ const seedGames = [
     coverUrl: null,
     artifactBaseUrl: "http://localhost:9000/yaha-games/games/seed/sample-quiz-adventure/v1",
   },
+  {
+    // 第三个游戏：来自 AI Create 流程生成并发布的真实案例
+    // 该游戏通过 /create 页面触发生成，对应 task_id: cmqo12wdr000vkgw9m1he0oen
+    title: "躲避障碍",
+    description: "驾驶霓虹侦察艇在失控陨石雨与太空残骸中穿梭闪避，坚持越久分数越高。用方向键在有限空间内移动，冲向安全星门。",
+    tags: ["霓虹科幻", "躲避生存", "高分挑战", "紧张刺激"],
+    coverUrl: null,
+    artifactBaseUrl: "http://localhost:9000/yaha-games/games/generated/cmqo12wdr000vkgw9m1he0oen/v1",
+  },
 ];
 
 async function upsertPublishedGame(userId: string, game: (typeof seedGames)[number]) {
