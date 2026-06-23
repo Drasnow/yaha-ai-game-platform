@@ -126,6 +126,13 @@ export function PlayClient({ gameId, preview, user }: PlayClientProps) {
           ← 首页
         </Link>
         <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => window.open(`/play-fullscreen/${gameId}${preview ? "?preview=1" : ""}`, "_blank")}
+            className="rounded-full bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500"
+          >
+            全屏游玩
+          </button>
           {playData?.game.isPreview && (
             <Link
               href="/games"
@@ -134,14 +141,14 @@ export function PlayClient({ gameId, preview, user }: PlayClientProps) {
               ← 我的游戏
             </Link>
           )}
-          {user && (
+          {/* {user && (
             <Link
               href="/create"
               className="text-indigo-300 transition hover:text-indigo-100"
             >
               + 新建游戏
             </Link>
-          )}
+          )} */}
           <Link
             href={`/api/v1/games/${gameId}/play-meta${preview ? "?preview=1" : ""}`}
             className="ml-2 text-zinc-600 transition hover:text-zinc-400"
