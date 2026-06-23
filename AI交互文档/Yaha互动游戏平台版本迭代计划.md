@@ -94,8 +94,8 @@
 | `app/agent/nodes/vision_agent.py` | VisionAgent | ✅（超出计划）|
 | `app/agent/nodes/narrative_agent.py` | NarrativeAgent | ✅（超出计划）|
 | `app/agent/nodes/gameplay_agent.py` | GameplayAgent | ✅（超出计划）|
-| `app/agent/nodes/code_generator_node.py` | 代码生成节点 | ✅（超出计划）|
-| `app/agent/nodes/validator_node.py` | 校验节点 | ✅（超出计划）|
+| `app/agent/nodes/code_generator_agent.py` | CodeGeneratorAgent（LLM 代码生成） | ✅（超出计划）|
+| `app/agent/nodes/validator_workflow.py` | ValidatorWorkflow（产物验证） | ✅（超出计划）|
 | `app/agent/nodes/upload_workflow.py` | 上传工作流 | ✅（超出计划）|
 | `app/agent/nodes/template_workflow.py` | 模板化生成 | ✅（超出计划）|
 | `app/agent/nodes/retry_workflow.py` | 重试工作流 | ✅（超出计划）|

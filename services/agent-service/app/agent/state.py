@@ -105,7 +105,8 @@ class GenerationState(TypedDict):
     specialist_results: Annotated[dict[str, str], _merge_specialist_results]  # Specialist 结果
 
     # ===== 重试控制 =====
-    retry_count: NotRequired[int]  # 当前重试次数
+    retry_count: NotRequired[int]  # 当前重试/修复次数
+    regenerate_requested: NotRequired[bool]  # 是否需要重新调用 CodeGenerator
 
 
 def create_initial_state(request: GenerateRequest) -> GenerationState:
@@ -126,6 +127,7 @@ def create_initial_state(request: GenerateRequest) -> GenerationState:
         logs=[],
         specialist_results={},
         retry_count=0,
+        regenerate_requested=False,
         asset_context=None,
     )
 

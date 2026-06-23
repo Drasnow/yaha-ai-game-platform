@@ -1,7 +1,7 @@
 """Template Workflow 节点 - 模板快速生成（设计阶段）。
 
 基于预定义模板生成游戏设计规范（UnifiedDesign），
-文件渲染和验证交给下游 code_generator_node 和 validator_node 完成。
+文件渲染和验证交给下游 code_generator_agent 和 validator_workflow 完成。
 """
 
 import logging
@@ -53,7 +53,7 @@ async def template_workflow(state: GenerationState) -> GenerationState:
     """模板工作流 - 生成游戏设计规范（快速路径）。
 
     基于用户 prompt 选择合适模板，生成 UnifiedDesign 规范。
-    文件渲染由下游 code_generator_node 完成。
+    文件渲染由下游 code_generator_agent 完成。
 
     Args:
         state: 当前状态
@@ -162,7 +162,7 @@ async def template_workflow(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         ))
 
-        # 4. 不再渲染文件和验证，交给下游 code_generator_node 和 validator_node
+        # 4. 不再渲染文件和验证，交给下游 code_generator_agent 和 validator_workflow
         return {
             **state,
             "logs": logs,

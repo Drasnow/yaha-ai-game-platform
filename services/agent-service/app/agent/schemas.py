@@ -110,6 +110,13 @@ class UnifiedDesign(BaseModel):
     )
 
 
+class IssueKind(str):
+    """验证问题分类"""
+    FIXABLE = "fixable"       # 可修复：引用路径错、manifest 格式错，可自动修复后重验证
+    UNFIXABLE = "unfixable"   # 不可修复：LLM 输出崩溃、JSON 格式严重错误，需重新生成
+    CRITICAL = "critical"     # 严重：安全问题，直接失败
+
+
 class ValidationResult(BaseModel):
     """验证结果"""
 
@@ -123,6 +130,10 @@ class ValidationResult(BaseModel):
     warnings: list[str] = Field(
         default_factory=list,
         description="警告信息列表"
+    )
+    issue_kinds: list[str] = Field(
+        default_factory=list,
+        description="每个 issue 对应的分类：fixable / unfixable / critical"
     )
 
 

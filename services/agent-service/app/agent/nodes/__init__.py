@@ -13,8 +13,8 @@ from app.agent.nodes.vision_agent import vision_agent
 from app.agent.nodes.gameplay_agent import gameplay_agent
 from app.agent.nodes.narrative_agent import narrative_agent
 from app.agent.nodes.synthesis_agent import synthesis_agent
-from app.agent.nodes.code_generator_node import code_generator_node
-from app.agent.nodes.validator_node import validator_node
+from app.agent.nodes.code_generator_agent import code_generator_agent
+from app.agent.nodes.validator_workflow import validator_workflow
 from app.agent.nodes.upload_workflow import upload_workflow
 from app.agent.nodes.retry_workflow import retry_workflow
 from app.agent.nodes.fanout_node import specialist_fan_out
@@ -27,8 +27,8 @@ __all__ = [
     "gameplay_agent",
     "narrative_agent",
     "synthesis_agent",
-    "code_generator_node",
-    "validator_node",
+    "code_generator_agent",
+    "validator_workflow",
     "upload_workflow",
     "retry_workflow",
     "specialist_fan_out",

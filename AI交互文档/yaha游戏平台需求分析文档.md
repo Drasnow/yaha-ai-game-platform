@@ -916,8 +916,8 @@ services/agent-service/
         vision_agent.py                    ← VisionAgent（视觉规范）
         narrative_agent.py                 ← NarrativeAgent（叙事规范）
         gameplay_agent.py                  ← GameplayAgent（游戏机制）
-        code_generator_node.py            ← 代码生成节点
-        validator_node.py                  ← 校验节点
+        code_generator_agent.py            ← CodeGeneratorAgent（LLM 代码生成）
+        validator_workflow.py                  ← ValidatorWorkflow（产物验证）
         upload_workflow.py                 ← 上传工作流
         template_workflow.py               ← 模板化游戏生成
         retry_workflow.py                  ← 重试工作流

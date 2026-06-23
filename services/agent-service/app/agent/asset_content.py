@@ -18,7 +18,7 @@ from app.schemas.generate import GenerationAsset
 
 logger = logging.getLogger(__name__)
 
-MAX_CHARS_PER_FILE = 2000
+MAX_CHARS_PER_FILE = 4000
 FETCH_TIMEOUT_SECONDS = 10.0
 
 # ========================================

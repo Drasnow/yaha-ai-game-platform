@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = 3
     # Model behavior settings (provider-dependent)
     llm_reasoning_effort: str = "medium"  # low | medium | high
-    llm_tool_output_token_limit: int = 25000
+    llm_tool_output_token_limit: int | None = None
     llm_personality: str = "pragmatic"  # pragmatic | creative | precise
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

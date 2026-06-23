@@ -1,6 +1,8 @@
-"""Retry Workflow 节点 - 重试机制。
+"""Retry Workflow 节点 - 修复与重新生成决策。
 
-处理验证失败后的重试逻辑。
+处理验证失败后的两种处理路径：
+  - fixable:    可自动修复的问题 → 在已有文件上修复 → 重新验证
+  - unfixable:  不可修复的问题 → 标记触发重新生成（由 should_retry 边路由回 CodeGenerator）
 """
 
 import json
@@ -8,116 +10,195 @@ import logging
 from datetime import datetime
 
 from app.agent.state import GenerationState
-from app.agent.schemas import AgentLog
+from app.agent.schemas import AgentLog, IssueKind
 
 logger = logging.getLogger(__name__)
 
+# 重试上限（fixable 修复次数）
+MAX_FIX_ATTEMPTS = 3
+
 
 async def retry_workflow(state: GenerationState) -> GenerationState:
-    """RetryWorkflow - 重试机制。
+    """RetryWorkflow - 修复不可用文件并决定下一步。
 
-    当验证失败时，增加重试计数并尝试修复问题。
+    1. 从 ValidationResult 中提取问题列表和分类
+    2. 对 fixable 问题执行自动修复
+    3. 对 unfixable 问题标记重新生成请求
+    4. 返回更新后的状态，由 should_retry 边决定路由
 
     Args:
         state: 当前状态
 
     Returns:
-        更新后的状态
+        更新后的状态，包含 regenerate_requested 标志
     """
     request = state["request"]
     current_retry = state.get("retry_count", 0)
+    validation = state.get("validation")
 
-    logger.info(f"RetryWorkflow: 重试第 {current_retry + 1} 次, task_id={request.task_id}")
+    logger.info(f"RetryWorkflow: 处理第 {current_retry + 1} 次, task_id={request.task_id}")
 
     logs: list[AgentLog] = []
 
     logs.append(AgentLog(
         agent="RetryWorkflow",
         step="start",
-        message=f"开始重试 (第 {current_retry + 1} 次)",
+        message=f"开始处理验证失败 (第 {current_retry + 1} 次)",
         timestamp=datetime.now().isoformat(),
     ))
 
-    # 获取验证问题
-    validation = state.get("validation")
+    regenerate_requested = False
+    fix_applied = False
+
     if validation and not validation.passed:
         issues = validation.issues
+        issue_kinds = validation.issue_kinds or []
 
         logs.append(AgentLog(
             agent="RetryWorkflow",
             step="issues_found",
-            message=f"发现 {len(issues)} 个问题需要修复: {', '.join(issues[:3])}",
+            message=f"发现 {len(issues)} 个问题: {', '.join(issues[:3])}",
             timestamp=datetime.now().isoformat(),
         ))
 
-        # 尝试修复常见问题
         generated_files = state.get("generated_files")
         if generated_files and "files" in generated_files:
             files = generated_files["files"]
 
-            # 修复常见问题：HTML 缺少必要的 meta 标签
-            if "index.html" in files:
-                html = files["index.html"]
-                if '<meta charset' not in html:
-                    html = html.replace("<head>", '<head>\n<meta charset="utf-8">', 1)
-                    files["index.html"] = html
-                    logs.append(AgentLog(
-                        agent="RetryWorkflow",
-                        step="fix_applied",
-                        message="已修复: 添加 charset meta 标签",
-                        timestamp=datetime.now().isoformat(),
-                    ))
+            # ---- 修复所有 fixable 问题 ----
+            fix_applied = _fix_issues(files, issues, issue_kinds, logs)
 
-            # 修复常见问题：JS 语法错误（简单的引号匹配）
-            if "game.js" in files:
-                js = files["game.js"]
-                # 检查基本语法
-                if js.count("'") % 2 != 0 or js.count('"') % 2 != 0:
-                    logger.warning("JS 文件可能有引号不匹配问题")
-                    logs.append(AgentLog(
-                        agent="RetryWorkflow",
-                        step="warning",
-                        message="检测到 JS 文件可能有引号不匹配问题",
-                        timestamp=datetime.now().isoformat(),
-                    ))
+            # ---- 检查是否存在 unfixable / critical 问题 ----
+            for msg, kind in zip(issues, issue_kinds):
+                if kind in (IssueKind.UNFIXABLE, IssueKind.CRITICAL):
+                    regenerate_requested = True
+                    logger.info(f"RetryWorkflow: 检测到 {kind} 问题 [{msg}]，标记重新生成")
+                    break
 
-            # 修复 manifest.json files 格式：确保是字符串数组
-            if "manifest.json" in files:
-                try:
-                    manifest = json.loads(files["manifest.json"])
-                    # 检查 key 是否存在且值合法
-                    if "files" not in manifest or not isinstance(manifest["files"], list):
-                        manifest["files"] = ["index.html", "style.css", "game.js", "manifest.json"]
-                        files["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2)
-                        logger.info("已修复 manifest.files（缺失或格式错误）")
-                        logs.append(AgentLog(
-                            agent="RetryWorkflow",
-                            step="fix_applied",
-                            message="已修复 manifest files 字段",
-                            timestamp=datetime.now().isoformat(),
-                        ))
-                    elif not all(isinstance(f, str) for f in manifest["files"]):
-                        manifest["files"] = ["index.html", "style.css", "game.js", "manifest.json"]
-                        files["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2)
-                        logger.info("已修复 manifest.files（非字符串数组）")
-                        logs.append(AgentLog(
-                            agent="RetryWorkflow",
-                            step="fix_applied",
-                            message="已修复 manifest files 格式",
-                            timestamp=datetime.now().isoformat(),
-                        ))
-                except json.JSONDecodeError:
-                    pass
-
-    logs.append(AgentLog(
-        agent="RetryWorkflow",
-        step="complete",
-        message=f"重试处理完成，等待重新验证",
-        timestamp=datetime.now().isoformat(),
-    ))
+    # 构建结果日志
+    if regenerate_requested:
+        logs.append(AgentLog(
+            agent="RetryWorkflow",
+            step="regenerate_marked",
+            message="存在不可修复问题，标记请求重新调用 CodeGenerator",
+            timestamp=datetime.now().isoformat(),
+        ))
+    elif fix_applied:
+        logs.append(AgentLog(
+            agent="RetryWorkflow",
+            step="fixes_applied",
+            message="已应用自动修复，等待重新验证",
+            timestamp=datetime.now().isoformat(),
+        ))
+    else:
+        logs.append(AgentLog(
+            agent="RetryWorkflow",
+            step="no_action",
+            message="无自动修复项，等待重新验证",
+            timestamp=datetime.now().isoformat(),
+        ))
 
     return {
         **state,
         "logs": logs,
         "retry_count": current_retry + 1,
+        "regenerate_requested": regenerate_requested,
     }
+
+
+def _fix_issues(
+    files: dict[str, str],
+    issues: list[str],
+    issue_kinds: list[str],
+    logs: list[AgentLog],
+) -> bool:
+    """对所有 fixable 问题执行自动修复。
+
+    Returns:
+        True 表示有修复被应用
+    """
+    any_fixed = False
+
+    # ---- 预解析 manifest.json（只解析一次） ----
+    manifest_data = None
+    if "manifest.json" in files:
+        try:
+            manifest_data = json.loads(files["manifest.json"])
+        except json.JSONDecodeError:
+            manifest_data = None
+
+    # ---- HTML 相关修复 ----
+    if "index.html" in files:
+        html = files["index.html"]
+        html_changed = False
+
+        # 1. 缺少 charset
+        if "charset" not in html.lower() and "<head>" in html:
+            html = html.replace("<head>", '<head>\n<meta charset="utf-8">', 1)
+            _log_fix(logs, "添加缺失的 charset meta 标签")
+            html_changed = True
+            any_fixed = True
+
+        # 4. 缺少 CSS/JS 引用
+        if 'href="style.css"' not in html and "href='style.css'" not in html:
+            html = html.replace("</head>", '<link rel="stylesheet" href="style.css">\n</head>', 1)
+            _log_fix(logs, "修复 index.html 的 style.css 引用")
+            html_changed = True
+            any_fixed = True
+        if 'src="game.js"' not in html and "src='game.js'" not in html:
+            html = html.replace("</body>", '<script src="game.js"></script>\n</body>', 1)
+            _log_fix(logs, "修复 index.html 的 game.js 引用")
+            html_changed = True
+            any_fixed = True
+
+        if html_changed:
+            files["index.html"] = html
+
+    # ---- manifest.json 修复（只写一次） ----
+    if "manifest.json" in files and manifest_data is not None:
+        manifest_changed = False
+        fixed_msgs: set[str] = set()
+
+        # 2. files 字段
+        files_field = manifest_data.get("files")
+        needs_files_fix = False
+        if files_field is None:
+            needs_files_fix = True
+        elif not isinstance(files_field, list):
+            needs_files_fix = True
+        elif not all(isinstance(f, str) for f in files_field):
+            needs_files_fix = True
+        elif not {"index.html", "style.css", "game.js"}.issubset(set(files_field)):
+            needs_files_fix = True
+
+        if needs_files_fix:
+            manifest_data["files"] = ["index.html", "style.css", "game.js", "manifest.json"]
+            manifest_changed = True
+            fixed_msgs.add("修复 manifest files 字段")
+
+        # 3. entry / runtime
+        if manifest_data.get("entry") != "index.html":
+            manifest_data["entry"] = "index.html"
+            manifest_changed = True
+            fixed_msgs.add("修复 manifest entry 字段")
+        if manifest_data.get("runtime") != "iframe-html-v1":
+            manifest_data["runtime"] = "iframe-html-v1"
+            manifest_changed = True
+            fixed_msgs.add("修复 manifest runtime 字段")
+
+        if manifest_changed:
+            files["manifest.json"] = json.dumps(manifest_data, ensure_ascii=False, indent=2)
+            for msg in fixed_msgs:
+                _log_fix(logs, msg)
+            any_fixed = True
+
+    return any_fixed
+
+
+def _log_fix(logs: list[AgentLog], message: str) -> None:
+    logs.append(AgentLog(
+        agent="RetryWorkflow",
+        step="fix_applied",
+        message=message,
+        timestamp=datetime.now().isoformat(),
+    ))

@@ -35,7 +35,7 @@ class LLMClient:
     def __init__(
         self,
         provider: LLMProvider,
-        max_retries: int = 3,
+        max_retries: int = 2,
         retry_delay: float = 1.0,
         timeout: int = 300,
     ):
@@ -165,7 +165,7 @@ class LLMClient:
         except json.JSONDecodeError as e:
             raise LLMError(f"JSON 解析失败: {e}\n原始响应: {result}") from e
 
-    @traceable(run_type="chat", name="LLM Chat")
+    @traceable(run_type="llm", name="LLM Chat")
     async def _chat_with_retry(
         self,
         messages: list[ChatMessage],
@@ -273,7 +273,7 @@ def _log_llm_io(
     logger.info(f"\n{separator}\n[LLM Request] model={model} attempt={attempt}")
     for i, msg in enumerate(messages):
         role = msg.role.upper()
-        content_preview = msg.content[:300] + ("..." if len(msg.content) > 300 else "")
+        content_preview = msg.content#[:300] + ("..." if len(msg.content) > 300 else "")
         logger.info(f"  [{i}] {role}: {content_preview}")
     logger.info(f"\n[LLM Raw Response]: {raw_response}")
     if raw_response != parsed_content:

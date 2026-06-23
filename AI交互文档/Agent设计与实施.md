@@ -203,8 +203,8 @@
                          └────────┬────────┘
                                   │
                                   ▼
-                        ┌─────────────────┐
-                        │  validator_node  │
+                        ┌──────────────────┐
+                        │ validator_workflow│
                         └────────┬────────┘
                                  │
             ┌────────────────────┼────────────────────┐
@@ -230,15 +230,15 @@
 | 节点 | 类型 | 作用 | LLM 调用 |
 |------|------|------|----------|
 | **supervisor_agent** | Agent 节点 | 入口 Supervisor。使用 LLM 分析用户 prompt，判断是否为有效游戏请求（排除闲聊/无关内容）、复杂度（简单/复杂），决定后续路径。拒绝时返回 `feedback_message` 引导用户重新输入。 | 是 |
-| **code_generator_node** | Workflow 节点 | 调用 LLM 生成完整的 HTML/CSS/JS 游戏代码。根据 `unified_design` 中的视觉、机制、叙事规范生成代码。complexity 字段决定生成规模和复杂度（simple=单关卡 ~60s，complex=多关卡 ~3-5min）。 | 是 |
+| **code_generator_agent** | Agent 节点 | 调用 LLM 生成完整的 HTML/CSS/JS 游戏代码。根据 `unified_design` 中的视觉、机制、叙事规范生成代码。complexity 字段决定生成规模和复杂度（simple=单关卡 ~60s，complex=多关卡 ~3-5min）。LLM 超时 5 分钟，支持指数退避重试（最多 3 次）。 | 是 |
 | **specialist_fan_out** | 路由节点 | 并行分发器。使用 LangGraph `Send` API 将状态同时分发给三个 Specialist Agent，实现真正的并行执行。 | 否 |
 | **vision_agent** | Agent 节点 | 视觉设计师。使用 LLM 生成游戏视觉规范（风格、配色、动画、氛围、字体）。三个 Specialist 中并行执行。 | 是 |
 | **gameplay_agent** | Agent 节点 | 游戏机制设计师。使用 LLM 生成游戏机制规范（类型、目标、玩法、难度、计分、操作方式）。 | 是 |
 | **narrative_agent** | Agent 节点 | 叙事设计师。使用 LLM 生成叙事内容规范（主题、故事钩子、角色、进度叙事、反馈消息）。 | 是 |
 | **synthesis_agent** | Agent 节点 | 设计整合师。等待三个 Specialist 结果汇总后，使用 LLM 将视觉、机制、叙事规范整合为统一的 `UnifiedDesign`。 | 是 |
-| **code_generator_node** | Workflow 节点 | 代码生成器。读取 `UnifiedDesign`，根据 `template_hint` 选择模板渲染器，生成 HTML/CSS/JS 游戏文件及 `manifest.json`。注意：无论是 template 路径还是 specialist 路径，最终都经过此节点生成文件，实现统一的产物质量。 | 否 |
-| **validator_node** | Workflow 节点 | 安全验证器。检查生成代码的完整性（文件结构、关键函数、manifest），无 LLM 调用。 | 否 |
-| **retry_workflow** | Workflow 节点 | 重试工作流。当 `validator` 失败时触发，最多重试 3 次，每次重试后重新验证。 | 否 |
+| **code_generator_agent** | Agent 节点 | 代码生成器。读取 `UnifiedDesign`，调用 LLM 生成 HTML/CSS/JS 游戏文件及 `manifest.json`。无论是 template 路径还是 specialist 路径，最终都经过此节点生成文件，实现统一的产物质量。LLM 超时 5 分钟，支持指数退避重试（最多 3 次）。 | 是 |
+| **validator_workflow** | Workflow 节点 | 安全验证器。检查生成代码的完整性（文件结构、关键函数、manifest），无 LLM 调用。三层检查（文件结构 / manifest 格式 / 安全模式）各自独立，互不重叠。fixable 问题标记为 `FIXABLE` 返回给边路由处理。 | 否 |
+| **retry_workflow** | Workflow 节点 | 重试工作流。当 `validator_workflow` 失败时触发：对 fixable 问题自动修复（manifest 格式、HTML 引用等）；对 unfixable 问题标记 `regenerate_requested`，触发重新调用 CodeGeneratorAgent。最多 3 次自动修复机会。 | 否 |
 | **upload_workflow** | Workflow 节点 | 文件上传器。将生成的文件上传至 MinIO 存储，返回 manifest_url / entry_url / artifact_base_url。 | 否 |
 
 ### 边路由说明
@@ -253,10 +253,12 @@ specialist_fan_out 路由（Send API 并行）：
   → gameplay_agent (并行)
   → narrative_agent (并行)
 
-validator_node 路由：
-  验证通过                      → upload_workflow → END
-  验证失败，重试次数 < 3        → retry_workflow → validator_node
-  验证失败，重试次数 >= 3       → END (错误终止)
+validator_workflow 路由：
+  验证通过 + passed=True                      → upload_workflow → END
+  验证失败 + regenerate_requested=True         → code_generator_agent（重新生成）
+  验证失败 + critical 问题                    → END (安全问题直接终止)
+  验证失败 + fixable 问题 + retry_count < 3  → retry_workflow → validator_workflow
+  验证失败 + fixable 问题 + retry_count >= 3 → END (修复耗尽终止)
 ```
 
 ### Supervisor Agent 决策说明
@@ -420,8 +422,8 @@ services/agent-service/
 │   │   │   ├── gameplay_agent.py    # GameplayAgent
 │   │   │   ├── narrative_agent.py   # NarrativeAgent
 │   │   │   ├── synthesis_agent.py   # SynthesisAgent
-│   │   │   ├── code_generator_node.py  # CodeGenerator（LLM生成代码）
-│   │   │   ├── validator_node.py    # ValidatorNode
+│   │   │   ├── code_generator_agent.py  # CodeGeneratorAgent（LLM生成代码）
+│   │   │   ├── validator_workflow.py  # ValidatorWorkflow
 │   │   │   ├── upload_workflow.py   # UploadWorkflow
 │   │   │   ├── fanout_node.py      # SpecialistFanOut
 │   │   │   ├── retry_workflow.py   # RetryWorkflow
@@ -449,8 +451,8 @@ from app.agent.nodes import (
     gameplay_agent,
     narrative_agent,
     synthesis_agent,
-    code_generator_node,
-    validator_node,
+    code_generator_agent,
+    validator_workflow,
     upload_workflow,
     retry_workflow,
     specialist_fan_out,
@@ -469,8 +471,8 @@ def create_generation_graph() -> StateGraph:
     graph.add_node("gameplay_agent", gameplay_agent)
     graph.add_node("narrative_agent", narrative_agent)
     graph.add_node("synthesis_agent", synthesis_agent)
-    graph.add_node("code_generator", code_generator_node)
-    graph.add_node("validator", validator_node)
+    graph.add_node("code_generator", code_generator_agent)
+    graph.add_node("validator", validator_workflow)
     graph.add_node("upload_workflow", upload_workflow)
     graph.add_node("retry_workflow", retry_workflow)
 
@@ -816,3 +818,6 @@ DEFAULT_GENERATION_MODE="auto"
 官方文档总览：
 https://docs.langchain.com/oss/python/langgraph/overview （英）
 https://docs.langchain.org.cn/oss/python/langgraph/overview （中）
+
+LangSmith
+https://docs.langchain.com/langsmith/observability

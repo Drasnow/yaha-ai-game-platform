@@ -186,7 +186,7 @@ export async function runGenerationTask({
 
     // 流结束，检查是否成功
     if (!artifactData) {
-      throw new Error("Agent 未返回产物信息");
+      throw new Error("AI出现网络故障，未返回生成游戏，请稍后重试");
     }
 
     // 获取 title/description/tags（需要从最后一个 unified_design log 或 agent 端返回）

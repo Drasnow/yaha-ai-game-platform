@@ -1,11 +1,11 @@
 ﻿from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class GenerationAsset(BaseModel):
     asset_id: str = Field(min_length=1)
-    url: HttpUrl
+    url: str  # 用 str 而非 HttpUrl，确保 msgpack 可序列化
     mime_type: str = Field(min_length=1)
 
 

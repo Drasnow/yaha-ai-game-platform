@@ -5,16 +5,13 @@
 
 import logging
 import json
-import re
 from datetime import datetime
-from typing import Annotated
 
 from pydantic import BaseModel, Field
 
 from app.agent.state import GenerationState
 from app.agent.schemas import AgentLog
 from app.agent.builder import TEMPLATE_RENDERERS, GameDesign, GeneratedFiles
-from app.agent.validator import validate_generated_files
 from app.llm.client import LLMClient
 from app.llm.providers import create_provider
 from app.core.config import get_settings
@@ -171,11 +168,14 @@ def _build_game_code_prompt(
 # 主节点
 # ========================================
 
-async def code_generator_node(state: GenerationState) -> GenerationState:
-    """CodeGeneratorNode - 调用 LLM 生成游戏代码。
+async def code_generator_agent(state: GenerationState) -> GenerationState:
+    """CodeGeneratorAgent - 调用 LLM 生成游戏代码。
 
     基于 unified_design 中包含的 vision、gameplay、narrative 规范，
     调用 LLM 生成完整的游戏代码文件。
+
+    注意：所有验证（结构、manifest、安全）统一由 validator_workflow 负责。
+    CodeGeneratorAgent 只做生成，不做验证。
 
     Args:
         state: 当前状态
@@ -249,10 +249,13 @@ async def code_generator_node(state: GenerationState) -> GenerationState:
         llm = LLMClient(provider=provider)
 
         # 调用 LLM 生成代码（网络/LLM 错误由 RetryPolicy 重试）
+        # max_tokens 上限必须匹配 API 代理的限制，过大会导致服务端主动断连
+        # Claude Sonnet 模型通常限制在 8192~16384，建议不超过 16384
         result: GeneratedGameCode = await llm.generate_json(
             prompt=prompt,
             schema=GeneratedGameCode,
-            max_tokens=25000,
+            max_tokens=16384,
+            # timeout=600,
         )
 
         await llm.close()
@@ -272,9 +275,7 @@ async def code_generator_node(state: GenerationState) -> GenerationState:
             "manifest.json": result.manifest_json,
         }
 
-        # 验证文件内容（ValueError 由 RetryPolicy 决定是否重试）
-        _validate_files(files)
-
+        # manifest 解析（格式错误由 RetryPolicy 触发重试；JSON 内容正确性由 validator_workflow 统一检查）
         manifest = json.loads(result.manifest_json)
 
         log_validate = AgentLog(
@@ -349,43 +350,3 @@ async def code_generator_node(state: GenerationState) -> GenerationState:
         # LLM 调用 / 网络错误：交给 RetryPolicy 重试，不做降级
         raise
 
-
-def _validate_files(files: dict[str, str]) -> None:
-    """验证生成的文件内容。
-
-    Args:
-        files: 文件名字典
-
-    Raises:
-        ValueError: 文件内容不符合要求
-    """
-    required_files = ["index.html", "style.css", "game.js", "manifest.json"]
-
-    for fname in required_files:
-        if fname not in files:
-            raise ValueError(f"缺少必需文件: {fname}")
-
-        content = files[fname]
-        if not content or len(content.strip()) == 0:
-            raise ValueError(f"文件 {fname} 内容为空")
-
-    # 检查 index.html 引用了正确的文件
-    html = files["index.html"]
-    if 'href="style.css"' not in html and "href='style.css'" not in html:
-        raise ValueError("index.html 未正确引用 style.css")
-    if 'src="game.js"' not in html and "src='game.js'" not in html:
-        raise ValueError("index.html 未正确引用 game.js")
-
-    # 检查 CSS 和 JS 不为空
-    if len(files["style.css"].strip()) < 10:
-        raise ValueError("style.css 内容过短")
-    if len(files["game.js"].strip()) < 10:
-        raise ValueError("game.js 内容过短")
-
-    # 验证 manifest.json 可解析
-    try:
-        manifest = json.loads(files["manifest.json"])
-        if manifest.get("runtime") != "iframe-html-v1":
-            raise ValueError("manifest.json runtime 必须为 'iframe-html-v1'")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"manifest.json 格式错误: {e}")
