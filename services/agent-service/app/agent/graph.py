@@ -6,6 +6,7 @@
 - https://docs.langchain.com/oss/python/langgraph/use-graph-api
 - https://docs.langchain.com/oss/python/langgraph/fault-tolerance
 - https://docs.langchain.com/langsmith/trace-with-langgraph  # LangGraph + LangSmith 标准集成
+- https://docs.langchain.com/oss/python/langgraph/persistence  # 持久化检查点
 """
 
 import logging
@@ -13,19 +14,10 @@ from datetime import datetime
 
 from langgraph.graph import StateGraph, END
 from langgraph.constants import START
-from langgraph.types import Command, RetryPolicy, Send
+from langgraph.types import Command, RetryPolicy
 from langgraph.errors import NodeError
 
-# LangGraph 内置内存 checkpointer，同时服务于：
-# 1. 进程内状态持久化（断点续算）
-# 2. LangSmith tracing 数据管道（每个 node 的输入输出自动上报）
-# 官方文档: https://docs.langchain.com/langsmith/trace-with-langgraph
-try:
-    from langgraph.checkpoint.memory import MemorySaver
-except ImportError:
-    MemorySaver = None
-
-from app.agent.state import GenerationState, create_initial_state
+from app.agent.state import GenerationState, create_initial_state, get_request
 from app.agent.nodes import (
     supervisor_agent,
     vision_agent,
@@ -36,7 +28,6 @@ from app.agent.nodes import (
     validator_workflow,
     upload_workflow,
     retry_workflow,
-    specialist_fan_out,
 )
 from app.agent.edges import (
     route_by_supervisor,
@@ -55,39 +46,43 @@ logger = logging.getLogger(__name__)
 #   - AWS US:  "https://aws.api.smith.langchain.com"
 #   - GCP APAC: "https://apac.api.smith.langchain.com"
 
-# Checkpointer:
-# MemorySaver 提供进程内状态持久化，同时作为 LangSmith tracing 的数据管道。
-# 每个 node 的输入/输出/异常会被自动上报，在 https://smith.langchain.com 看到完整树状 trace。
-# 注意：MemorySaver 在进程重启后状态丢失，仅适合开发调试。
-_checkpointer = MemorySaver() if MemorySaver else None
+# Checkpointer 由外部（main.py）注入，支持 MemorySaver / RedisSaver / PostgresSaver 等。
+# 官方文档: https://docs.langchain.com/oss/python/langgraph/persistence
+# - MemorySaver: 进程内，仅开发调试用
+# - RedisSaver: 跨进程持久化，服务重启后可恢复（生产推荐）
+# - PostgresSaver: 同样支持跨进程，ACID 保证更强
+# 每个 node 的输入/输出/异常会自动上报 LangSmith（需 env 配置 LANGSMITH_*）。
 
 
-def _get_invoke_config(request) -> dict:
-    """构建传递给 graph.ainvoke / graph.astream 的 config。
+# ========================================
+# 图实例管理（单例）
+# ========================================
 
-    LangGraph 执行时会自动将这些 run 上报到 LangSmith，呈现为树状 trace：
-      supervisor_agent
-        └── LLM Chat (child run, via @traceable)
-      specialist_fan_out
-        ├── vision_agent
-        ├── gameplay_agent
-        └── narrative_agent
-      synthesis_agent
-      code_generator_agent
-        └── LLM Chat (child run)
-      validator
-      upload_workflow
+_graph_instance: StateGraph | None = None
 
-    thread_id: 固定线程名，按请求聚合，方便在 LangSmith 中定位
-    tags: 方便在 LangSmith 中按 tag 过滤
+
+def init_graph(checkpointer) -> StateGraph:
+    """初始化并缓存全局图实例（幂等）。
+
+    应在 FastAPI lifespan 中调用，确保 Redis 连接就绪后再初始化图。
+
+    Args:
+        checkpointer: LangGraph Checkpointer 实例（如 RedisSaver）。
+                      传 None 则不启用持久化检查点（fallback 到无 checkpointer）。
+
+    Returns:
+        编译后的 StateGraph
     """
-    return {
-        "configurable": {
-            "thread_id": f"yaha-{request.task_id}",
-        },
-        "run_name": f"yaha-generate-{request.task_id}",
-        "tags": ["yaha-agent", "game-generation"],
-    }
+    global _graph_instance
+    if _graph_instance is None:
+        _graph_instance = create_generation_graph(checkpointer=checkpointer)
+        logger.info("LangGraph 图实例已初始化（checkpointer=%s)", type(checkpointer).__name__)
+    return _graph_instance
+
+
+def get_generation_graph() -> StateGraph | None:
+    """获取全局图实例（需先调用 init_graph）。"""
+    return _graph_instance
 
 
 # ========================================
@@ -120,7 +115,7 @@ FAST_RETRY = RetryPolicy(
 
 def _on_upload_error(state: GenerationState, error: NodeError) -> Command:
     """upload_workflow 所有重试耗尽后触发：记录错误状态，流程结束。"""
-    task_id = state.get("request", {}).task_id if state.get("request") else "unknown"
+    task_id = get_request(state).task_id
     logger.error(f"[error_handler] upload_workflow 耗尽重试，task_id={task_id}: {error.error}")
     return Command(
         update={
@@ -138,7 +133,7 @@ def _on_upload_error(state: GenerationState, error: NodeError) -> Command:
 
 def _on_code_gen_error(state: GenerationState, error: NodeError) -> Command:
     """code_generator 所有重试耗尽后触发：记录错误状态，流程结束。"""
-    task_id = state.get("request", {}).task_id if state.get("request") else "unknown"
+    task_id = get_request(state).task_id
     logger.error(f"[error_handler] code_generator 耗尽重试，task_id={task_id}: {error.error}")
     return Command(
         update={
@@ -154,22 +149,21 @@ def _on_code_gen_error(state: GenerationState, error: NodeError) -> Command:
     )
 
 
-# 全局图实例缓存
-_generation_graph = None
+# ========================================
+# 图构建
+# ========================================
 
-
-def create_generation_graph() -> StateGraph:
+def create_generation_graph(checkpointer=None) -> StateGraph:
     """创建游戏生成主图。
 
     所有有效游戏请求都走统一路径：
     1. START → SupervisorAgent（LLM 判断）
     2. SupervisorAgent → 路由决策
        - "rejected" → END（返回引导信息给用户）
-       - 任何 approved → specialist_fan_out（LLM 专家并行）
-    3. Specialist Fan-Out：VisionAgent + GameplayAgent + NarrativeAgent 并行执行
-    4. SynthesisAgent → 整合设计
-    5. CodeGeneratorAgent → 调用 LLM 生成游戏代码
-    6. ValidatorWorkflow → 验证
+       - 任何 approved → 并行执行 VisionAgent + GameplayAgent + NarrativeAgent
+    3. SynthesisAgent → 整合设计
+    4. CodeGeneratorAgent → 调用 LLM 生成游戏代码
+    5. ValidatorWorkflow → 验证
        - 通过           → UploadWorkflow → END
        - critical 问题  → END（安全问题，直接失败）
        - unfixable 问题 → CodeGeneratorAgent（重新调用 LLM）
@@ -177,6 +171,10 @@ def create_generation_graph() -> StateGraph:
 
     complexity（simple/complex）仅用于控制 code_generator 的生成规模和详细程度，
     不影响流程分支。
+
+    Args:
+        checkpointer: LangGraph Checkpointer 实例（如 RedisSaver）。
+                      传 None 则不启用持久化检查点。
 
     Returns:
         编译后的 StateGraph
@@ -189,9 +187,6 @@ def create_generation_graph() -> StateGraph:
 
     # 入口判断节点
     graph.add_node("supervisor_agent", supervisor_agent)
-
-    # Specialist Fan-Out（分发节点）
-    graph.add_node("specialist_fan_out", specialist_fan_out)
 
     # Specialist Agents
     graph.add_node("vision_agent", vision_agent)
@@ -227,25 +222,13 @@ def create_generation_graph() -> StateGraph:
     # START → SupervisorAgent
     graph.add_edge(START, "supervisor_agent")
 
-    # SupervisorAgent → 路由决策（所有 approved 都走 specialist_fan_out）
+    # SupervisorAgent → 路由决策（rejected 结束，approved 并行执行 Specialists）
     graph.add_conditional_edges(
         "supervisor_agent",
         route_by_supervisor,
         {
-            "specialist_fan_out": "specialist_fan_out",
             "rejected": END,
         }
-    )
-
-    # ========================================
-    # Specialist 并行执行 (Fan-Out)
-    # 使用 Send API 实现动态并行
-    # ========================================
-
-    # Fan-Out: 条件边返回 Send 列表实现并行执行
-    graph.add_conditional_edges(
-        "specialist_fan_out",
-        _route_to_specialists,
     )
 
     # Fan-In: Specialist 完成后汇聚到 Synthesis
@@ -270,11 +253,6 @@ def create_generation_graph() -> StateGraph:
     # ========================================
 
     # Validator → 条件边（修复/重新生成/上传/错误）
-    # - validation.passed=True                      → upload_workflow
-    # - regenerate_requested=True                   → code_generator（重新调用 LLM）
-    # - critical 问题                              → error（直接失败）
-    # - fixable 问题 + retry_count < 3             → retry_workflow（自动修复后重验证）
-    # - fixable 问题 + retry_count >= 3 或其他     → error（兜底）
     graph.add_conditional_edges(
         "validator",
         should_retry,
@@ -292,47 +270,44 @@ def create_generation_graph() -> StateGraph:
     # Upload → END
     graph.add_edge("upload_workflow", END)
 
-    # ========================================
-    # 编译图（传入 checkpointer 以支持 LangSmith tracing）
-    # ========================================
-    if _checkpointer:
-        return graph.compile(checkpointer=_checkpointer)
-    return graph.compile()
+    # 编译图（checkpointer 由外部注入，支持 MemorySaver / RedisSaver / PostgresSaver）
+    return graph.compile(checkpointer=checkpointer)
 
 
-def _route_to_specialists(state: GenerationState) -> list[Send]:
-    """Route: 并行触发所有 Specialist Agents。
+# ========================================
+# 执行入口
+# ========================================
 
-    使用 Send API 实现动态并行执行。
-    每个 Send 会创建一个独立的执行分支，所有分支在同一 superstep 内并行执行。
+def _get_invoke_config(request) -> dict:
+    """构建传递给 graph.ainvoke / graph.astream 的 config。
 
-    Args:
-        state: 当前状态
+    LangGraph 执行时会自动将这些 run 上报到 LangSmith，呈现为树状 trace：
+      supervisor_agent
+        └── LLM Chat (child run, via @traceable)
+      vision_agent / gameplay_agent / narrative_agent (并行)
+      synthesis_agent
+      code_generator_agent
+        └── LLM Chat (child run)
+      validator
+      upload_workflow
 
-    Returns:
-        Send 对象列表，每个 Specialist 一个
+    thread_id: 固定线程名，按请求聚合，方便在 LangSmith 中定位
+    tags: 方便在 LangSmith 中按 tag 过滤
     """
-    return [
-        Send("vision_agent", state),
-        Send("gameplay_agent", state),
-        Send("narrative_agent", state),
-    ]
-
-
-def get_generation_graph() -> StateGraph:
-    """获取全局图实例（单例模式）。
-
-    Returns:
-        编译后的 StateGraph
-    """
-    global _generation_graph
-    if _generation_graph is None:
-        _generation_graph = create_generation_graph()
-    return _generation_graph
+    return {
+        "configurable": {
+            "thread_id": f"yaha-{request.task_id}",
+        },
+        "run_name": f"yaha-generate-{request.task_id}",
+        "tags": ["yaha-agent", "game-generation"],
+    }
 
 
 async def run_generation(request) -> GenerationState:
     """运行生成流程。
+
+    通过全局单例图实例执行，thread_id 绑定 task_id，
+    确保同一任务可从上次中断的节点恢复（Redis 持久化检查点）。
 
     Args:
         request: GenerateRequest 用户请求
@@ -341,11 +316,12 @@ async def run_generation(request) -> GenerationState:
         最终状态
     """
     graph = get_generation_graph()
+    if graph is None:
+        raise RuntimeError("图实例未初始化，请先调用 init_graph(checkpointer)")
     initial_state = create_initial_state(request)
 
     logger.info(f"开始生成流程, task_id={request.task_id}")
 
-    # LangGraph 会自动将每个节点的输入/输出作为 child run 上报到 LangSmith
     config = _get_invoke_config(request)
     result = await graph.ainvoke(initial_state, config=config)
 
@@ -357,6 +333,8 @@ async def run_generation(request) -> GenerationState:
 async def run_generation_stream(request):
     """流式运行生成流程。
 
+    通过全局单例图实例执行，支持断点续跑。
+
     Args:
         request: GenerateRequest 用户请求
 
@@ -364,6 +342,8 @@ async def run_generation_stream(request):
         中间状态更新
     """
     graph = get_generation_graph()
+    if graph is None:
+        raise RuntimeError("图实例未初始化，请先调用 init_graph(checkpointer)")
     initial_state = create_initial_state(request)
 
     logger.info(f"开始流式生成流程, task_id={request.task_id}")

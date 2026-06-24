@@ -17,7 +17,7 @@ import logging
 import re
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, ValidationResult, IssueKind
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
 
     所有检查均在 validator_workflow 内完成，不依赖 code_generator_agent。
     """
-    request = state["request"]
+    request = get_request(state)
 
     logger.info(f"ValidatorWorkflow: 验证生成代码, task_id={request.task_id}")
 
@@ -200,7 +200,7 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
                 message="所有验证通过",
                 timestamp=datetime.now().isoformat(),
             ))
-            return {
+            return _to_serializable({
                 **state,
                 "logs": logs,
                 "validation": ValidationResult(
@@ -209,7 +209,7 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
                     warnings=[],
                     issue_kinds=[],
                 ),
-            }
+            })
 
         logs.append(AgentLog(
             agent="Validator",
@@ -218,7 +218,7 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         ))
 
-        return {
+        return _to_serializable({
             **state,
             "logs": logs,
             "validation": ValidationResult(
@@ -227,11 +227,11 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
                 warnings=[],
                 issue_kinds=all_kinds,
             ),
-        }
+        })
 
     except Exception as e:
         logger.error(f"Validator: 验证失败: {e}")
-        return {
+        return _to_serializable({
             **state,
             "logs": logs + [AgentLog(
                 agent="Validator",
@@ -245,4 +245,4 @@ async def validator_workflow(state: GenerationState) -> GenerationState:
                 warnings=[],
                 issue_kinds=[IssueKind.CRITICAL],
             ),
-        }
+        })

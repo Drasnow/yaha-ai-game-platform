@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, GameplaySpec
 from app.llm.client import LLMClient
 from app.llm.providers import create_provider
@@ -60,7 +60,7 @@ async def gameplay_agent(state: GenerationState) -> GenerationState:
         更新后的状态，包含 gameplay 字段
     """
     settings = get_settings()
-    request = state["request"]
+    request = get_request(state)
 
     logger.info(f"GameplayAgent: 生成游戏机制, task_id={request.task_id}")
 
@@ -106,11 +106,11 @@ async def gameplay_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             "logs": [log_start, log_complete],
             "gameplay": result,
             "specialist_results": {"gameplay": "success"},
-        }
+        })
 
     except Exception as e:
         logger.warning(f"GameplayAgent: 生成失败，使用默认规范: {e}")
@@ -135,8 +135,8 @@ async def gameplay_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             "logs": [log_start, log_fallback],
             "gameplay": default_gameplay,
             "specialist_results": {"gameplay": f"fallback: {str(e)}"},
-        }
+        })

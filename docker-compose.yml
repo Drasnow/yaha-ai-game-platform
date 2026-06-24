@@ -24,6 +24,23 @@ services:
     volumes:
       - minio_data:/data
 
+  redis:
+    image: redis/redis-stack:7.2.0-v3
+    container_name: yaha-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+      --requirepass yaha_redis_password
+      --loadmodule /opt/redis-stack/lib/redisearch.so
+      --loadmodule /opt/redis-stack/lib/rejson.so
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
   minio_data:
+  redis_data:

@@ -6,36 +6,46 @@
 from typing import Literal
 
 from langgraph.constants import END
+from langgraph.types import Send
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_supervisor_result, get_validation
 from app.agent.schemas import IssueKind
 
 
-def route_by_supervisor(state: GenerationState) -> Literal["specialist_fan_out", "rejected"]:
+def route_by_supervisor(state: GenerationState) -> list[Send] | str:
     """根据 Supervisor Agent 决策结果路由。
 
-    所有 approved（无论 simple 还是 complex）都走 specialist_fan_out，
-    统一由 LLM 生成游戏代码。complexity 仅作为信息传递给 code_generator。
+    rejected → 直接结束（用户请求不合法或超出能力范围）
+    approved → 并行触发所有 Specialist Agents（通过 Send 列表实现动态并行）
 
     Args:
         state: 当前状态
 
     Returns:
-        路由目标: "specialist_fan_out" 或 "rejected"
+        rejected: 流程结束
+        list[Send]: 并行执行 Specialist Agents
     """
-    supervisor_result = state.get("supervisor_result")
+    supervisor_result = get_supervisor_result(state)
 
     if supervisor_result is None:
         # 降级保护：没有 supervisor 结果，尝试走生成路径
-        return "specialist_fan_out"
+        return [
+            Send("vision_agent", state),
+            Send("gameplay_agent", state),
+            Send("narrative_agent", state),
+        ]
 
     status = supervisor_result.status
 
     if status == "rejected":
         return "rejected"
 
-    # 所有 approved 都走 specialist_fan_out（统一 LLM 生成路径）
-    return "specialist_fan_out"
+    # 所有 approved → 并行触发三个 Specialist
+    return [
+        Send("vision_agent", state),
+        Send("gameplay_agent", state),
+        Send("narrative_agent", state),
+    ]
 
 
 def should_retry(state: GenerationState) -> Literal["retry_workflow", "regenerate", "upload_workflow", "error"]:
@@ -54,7 +64,7 @@ def should_retry(state: GenerationState) -> Literal["retry_workflow", "regenerat
       - 同一 cycle 中 UNFIXABLE 优先被 retry_workflow 标记 regenerate_requested，
         下一个 cycle 直接重新生成，不再浪费 fixable 重试次数
     """
-    validation = state.get("validation")
+    validation = get_validation(state)
 
     if validation is None:
         return "error"

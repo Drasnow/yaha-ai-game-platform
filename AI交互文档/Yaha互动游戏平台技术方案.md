@@ -92,11 +92,10 @@ FastAPI / Python Agent Service
   ├─ LangGraph StateGraph
   │   │
   │   ├─ SupervisorAgent：意图分类（LLM）
-  │   │   → approved_simple → TemplateWorkflow
-  │   │   → approved_complex → FanOut（并行 Specialist）
+  │   │   → approved → [并行] VisionAgent + GameplayAgent + NarrativeAgent
   │   │   → rejected → 返回拒绝反馈
   │   │
-  │   ├─ SpecialistFanOut（并行执行）
+  │   ├─ Specialist Agents（并行执行）
   │   │   ├─ VisionAgent（LLM）：视觉规范
   │   │   ├─ NarrativeAgent（LLM）：叙事规范
   │   │   └─ GameplayAgent（LLM）：游戏机制
@@ -531,7 +530,7 @@ SupervisorAgent（LLM）
      │                            ├─ ValidatorNode（危险 API 校验）
      │                            └─ UploadWorkflow（上传 MinIO）
      │
-     └─ status=approved_complex → SpecialistFanOut（并行 Specialist）
+     └─ status=approved → [并行] Specialist Agents
                                    ├─ VisionAgent（LLM）
                                    ├─ NarrativeAgent（LLM）
                                    └─ GameplayAgent（LLM）
@@ -574,7 +573,7 @@ GenerationTask(succeeded)
 - LLM 分析用户输入，判断是否有效（排除闲聊/问答）
 - 无效 → rejected，返回友好提示
 - 简单游戏（<100字符）→ TemplateWorkflow（模板化生成）
-- 复杂游戏（>=100字符或独特玩法）→ SpecialistFanOut（并行 Specialist + LLM 生成）
+- 有效游戏请求 → [并行] Specialist Agents（VisionAgent + GameplayAgent + NarrativeAgent）+ LLM 生成
 
 **模板化生成（TemplateWorkflow）：**
 || 模板 | 关键词 | 玩法 |
@@ -583,7 +582,7 @@ GenerationTask(succeeded)
 || avoid_obstacle | 躲避、障碍、生存 | 键盘或鼠标躲避障碍 |
 || quiz_game | 问答、选择、知识 | 多选题互动 |
 
-**复杂生成（SpecialistFanOut）：** VisionAgent（视觉）→ NarrativeAgent（叙事）→ GameplayAgent（机制）→ SynthesisAgent（整合）→ CodeGeneratorNode → ValidatorNode → UploadWorkflow
+**并行 Specialist 生成：** VisionAgent（视觉）→ NarrativeAgent（叙事）→ GameplayAgent（机制）→ SynthesisAgent（整合）→ CodeGeneratorNode → ValidatorNode → UploadWorkflow
 
 **降级策略：** LLM 调用失败时自动降级为模板化生成；FastAPI 不可用时 Next.js 端有本地 fallback 生成器
 
@@ -1325,7 +1324,7 @@ docs/manual-test-checklist.md
 | 至少 3 个示例游戏 | seed 2 个 + Create 生成发布 1 个（需执行 seed）✅ |
 | Play 动态加载远端文件 | `play-meta` 返回 MinIO manifest 和 bundle_base_url，iframe 加载远端 index.html ✅ |
 | Create 多模态输入 | Next.js 表单 + Route Handler 文件上传 + MinIO ✅ |
-| Multi-Agent 架构 | LangGraph StateGraph + Supervisor/SpecialistFanOut/TemplateWorkflow ✅ |
+| Multi-Agent 架构 | LangGraph StateGraph + Supervisor / VisionAgent + GameplayAgent + NarrativeAgent（并行）/ Synthesis / CodeGenerator / Validator / Upload ✅ |
 | 流式日志 | FastAPI SSE + Next.js SSE 路由 + 前端实时写入 DB ✅ |
 | 对象存储 | MinIO + AWS SDK v3，不用普通本地目录替代 ✅ |
 | 数据库存 meta | Prisma 模型保存 game、version、task、log ✅ |
@@ -1338,6 +1337,6 @@ docs/manual-test-checklist.md
 > **本实现已超出原计划的技术方案，主要升级点：**
 > - 自研状态机 → LangGraph StateGraph（显式图工作流）
 > - 单次 HTTP 调用 → SSE 流式实时推送日志
-> - 模板生成 → Supervisor（LLM 意图分类）+ SpecialistFanOut（并行 Specialist）
+> - 模板生成 → Supervisor（LLM 意图分类）+ [并行] Specialist Agents（VisionAgent + GameplayAgent + NarrativeAgent）
 > - 无可观测性 → LangSmith 完整 trace
 

@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ async def specialist_fan_out(state: GenerationState) -> GenerationState:
     Returns:
         更新后的状态
     """
-    logger.info(f"SpecialistFanOut: 准备并行分发, task_id={state['request'].task_id}")
+    logger.info(f"SpecialistFanOut: 准备并行分发, task_id={get_request(state).task_id}")
 
     log_entry = AgentLog(
         agent="SpecialistFanOut",
@@ -33,8 +33,8 @@ async def specialist_fan_out(state: GenerationState) -> GenerationState:
         timestamp=datetime.now().isoformat(),
     )
 
-    return {
+    return _to_serializable({
         **state,
         "logs": [log_entry],
         "specialist_results": {},
-    }
+    })

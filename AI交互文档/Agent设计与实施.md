@@ -87,7 +87,7 @@
 │  │  │              supervisor_agent（LLM 入口判断）                              │  │  │
 │  │  │  ┌───────────────────────────────────────────────────────────────┐  │  │  │
 │  │  │  │  • rejected → feedback_message → END（返回引导）                 │  │  │  │
-│  │  │  │  • approved（任何） → specialist_fan_out（统一 LLM 生成路径）   │  │  │  │
+│  │  │  │  • approved（任何） → [并行] vision/gameplay/narrative agents   │  │  │  │
 │  │  │  └───────────────────────────────────────────────────────────────┘  │  │  │
 │  │  └─────────────────────────────────────────────────────────────────────┘  │  │
 │  │                              │                                          │  │
@@ -148,7 +148,7 @@
 | **Workflow Node** | ValidatorNode | 安全规则验证 | 否 |
 | **Workflow Node** | UploadWorkflow | MinIO 上传 | 否 |
 | **Workflow Node** | RetryWorkflow | 失败重试（最多 3 次） | 否 |
-| **Router Node** | SpecialistFanOut | 并行分发 Specialist Agents | 否 |
+| **Router Node** | SupervisorAgent（条件边 Send） | 入口 Supervisor，通过 `add_conditional_edges` 直接触发 Specialist 并行分发 | 否 |
 
 ### 2.3 LangGraph 多 Agent 流程图
 
@@ -168,8 +168,7 @@
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │  LLM 判断输入类型                                                   │   │
 │  │  • rejected     → 设置 feedback_message → END（返回引导给用户）    │   │
-│  │  • approved（任何） → specialist_fan_out（统一 LLM 生成路径）  │   │
-│  │  • approved_complex → specialist_fan_out                           │   │
+│  │  • approved（任何） → [并行] VisionAgent + GameplayAgent + NarrativeAgent  │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────┬──────────────────────────────────────┘
                                    │
@@ -177,8 +176,8 @@
             │                      │                      │
             ▼                      │                      ▼
    ┌─────────────────┐             │           ┌──────────────────────┐
-   │           │  specialist_fan_out  │
-   │  (模板生成设计)  │             │           │   (并行分发器)       │
+   │           │  [并行执行] Specialist Agents  │
+   │  (模板路径)     │             │           │  [并行] 3个 Agents  │
    └────────┬────────┘             │           └──────────┬───────────┘
             │                      │                      │
             │                      │          ┌───────────┼───────────┐
@@ -229,9 +228,8 @@
 
 | 节点 | 类型 | 作用 | LLM 调用 |
 |------|------|------|----------|
-| **supervisor_agent** | Agent 节点 | 入口 Supervisor。使用 LLM 分析用户 prompt，判断是否为有效游戏请求（排除闲聊/无关内容）、复杂度（简单/复杂），决定后续路径。拒绝时返回 `feedback_message` 引导用户重新输入。 | 是 |
+| **supervisor_agent** | Agent 节点 | 入口 Supervisor。使用 LLM 分析用户 prompt，判断是否为有效游戏请求（排除闲聊/无关内容）、复杂度（简单/复杂），决定后续路径。拒绝时返回 `feedback_message` 引导用户重新输入。approved 时通过条件边直接触发三个 Specialist 并行执行。 | 是 |
 | **code_generator_agent** | Agent 节点 | 调用 LLM 生成完整的 HTML/CSS/JS 游戏代码。根据 `unified_design` 中的视觉、机制、叙事规范生成代码。complexity 字段决定生成规模和复杂度（simple=单关卡 ~60s，complex=多关卡 ~3-5min）。LLM 超时 5 分钟，支持指数退避重试（最多 3 次）。 | 是 |
-| **specialist_fan_out** | 路由节点 | 并行分发器。使用 LangGraph `Send` API 将状态同时分发给三个 Specialist Agent，实现真正的并行执行。 | 否 |
 | **vision_agent** | Agent 节点 | 视觉设计师。使用 LLM 生成游戏视觉规范（风格、配色、动画、氛围、字体）。三个 Specialist 中并行执行。 | 是 |
 | **gameplay_agent** | Agent 节点 | 游戏机制设计师。使用 LLM 生成游戏机制规范（类型、目标、玩法、难度、计分、操作方式）。 | 是 |
 | **narrative_agent** | Agent 节点 | 叙事设计师。使用 LLM 生成叙事内容规范（主题、故事钩子、角色、进度叙事、反馈消息）。 | 是 |
@@ -246,12 +244,7 @@
 ```
 supervisor_agent 路由：
   status == "rejected"           → END（返回 supervisor_feedback 给用户）
-  status == "approved"（任何）  → specialist_fan_out（统一 LLM 生成路径）
-
-specialist_fan_out 路由（Send API 并行）：
-  → vision_agent (并行)
-  → gameplay_agent (并行)
-  → narrative_agent (并行)
+  status == "approved"（任何）  → [并行] Send(vision_agent) + Send(gameplay_agent) + Send(narrative_agent)
 
 validator_workflow 路由：
   验证通过 + passed=True                      → upload_workflow → END
@@ -266,7 +259,7 @@ validator_workflow 路由：
 Supervisor Agent 是整个流程的入口，使用 LLM 判断用户输入：
 
 - **rejected**：用户输入与游戏设计无关（如闲聊、问候、知识问答等）。流程终止，`GenerateResponse.status = "rejected"`，`supervisor_feedback` 字段返回给用户友好的引导信息。
-- **approved**：所有有效游戏请求都走统一路径（`supervisor_fan_out → 3 Specialist 并行 → synthesis → code_generator → validator → upload`），调用 LLM 生成代码。`complexity` 字段（simple/complex）仅传递给 code_generator，用于控制生成代码的规模和复杂度。LLM 调用次数：1 次（Supervisor）+ 3 次（Specialist）+ 1 次（Synthesis）+ 1 次（CodeGenerator）= **6 次**。
+- **approved**：所有有效游戏请求都走统一路径（`Supervisor → 3 Specialist 并行（Send API）→ synthesis → code_generator → validator → upload`），调用 LLM 生成代码。`complexity` 字段（simple/complex）仅传递给 code_generator，用于控制生成代码的规模和复杂度。LLM 调用次数：1 次（Supervisor）+ 3 次（Specialist）+ 1 次（Synthesis）+ 1 次（CodeGenerator）= **6 次**。
 
 ### 路径对比
 
@@ -425,7 +418,7 @@ services/agent-service/
 │   │   │   ├── code_generator_agent.py  # CodeGeneratorAgent（LLM生成代码）
 │   │   │   ├── validator_workflow.py  # ValidatorWorkflow
 │   │   │   ├── upload_workflow.py   # UploadWorkflow
-│   │   │   ├── fanout_node.py      # SpecialistFanOut
+│   │   │   ├── fanout_node.py      # [已废弃，节点已删除，保留文件]
 │   │   │   ├── retry_workflow.py   # RetryWorkflow
 │   │   │   └── edges.py            # 边定义
 │   ├── schemas/
@@ -455,7 +448,6 @@ from app.agent.nodes import (
     validator_workflow,
     upload_workflow,
     retry_workflow,
-    specialist_fan_out,
 )
 from app.agent.edges import route_by_supervisor, should_retry
 
@@ -466,7 +458,6 @@ def create_generation_graph() -> StateGraph:
 
     # 注册节点
     graph.add_node("supervisor_agent", supervisor_agent)
-    graph.add_node("specialist_fan_out", specialist_fan_out)
     graph.add_node("vision_agent", vision_agent)
     graph.add_node("gameplay_agent", gameplay_agent)
     graph.add_node("narrative_agent", narrative_agent)
@@ -479,20 +470,13 @@ def create_generation_graph() -> StateGraph:
     # START → SupervisorAgent
     graph.add_edge(START, "supervisor_agent")
 
-    # SupervisorAgent → 路由决策（所有 approved 都走 specialist_fan_out）
+    # SupervisorAgent → 路由决策（rejected 结束，approved 并行执行 Specialists）
     graph.add_conditional_edges(
         "supervisor_agent",
         route_by_supervisor,
         {
-            "specialist_fan_out": "specialist_fan_out",
             "rejected": END,
         }
-    )
-
-    # Specialist 并行执行 (使用 Send)
-    graph.add_conditional_edges(
-        "specialist_fan_out",
-        _route_to_specialists,
     )
 
     # Specialist → Synthesis
@@ -668,23 +652,35 @@ async def supervisor_agent(state: GenerationState) -> GenerationState:
 # app/agent/edges.py
 
 from typing import Literal
+
 from langgraph.constants import END
+from langgraph.types import Send
+
 from app.agent.state import GenerationState
 
 
-def route_by_supervisor(state: GenerationState) -> Literal["specialist_fan_out", "rejected"]:
+def route_by_supervisor(state: GenerationState) -> list[Send] | str:
     """根据 Supervisor Agent 决策结果路由。
 
-    所有 approved（无论 simple 还是 complex）都走 specialist_fan_out，
-    complexity 仅传递给 code_generator 控制生成规模。
+    rejected → 直接结束（用户请求不合法或超出能力范围）
+    approved → 并行触发所有 Specialist Agents（通过 Send 列表实现动态并行）
     """
     sr = state.get("supervisor_result")
     if sr is None:
-        return "specialist_fan_out"  # 降级保护
+        # 降级保护：没有 supervisor 结果，尝试走生成路径
+        return [
+            Send("vision_agent", state),
+            Send("gameplay_agent", state),
+            Send("narrative_agent", state),
+        ]
     if sr.status == "rejected":
         return "rejected"
-    # 所有 approved 都走 specialist_fan_out（统一 LLM 生成路径）
-    return "specialist_fan_out"
+    # 所有 approved → 并行触发三个 Specialist
+    return [
+        Send("vision_agent", state),
+        Send("gameplay_agent", state),
+        Send("narrative_agent", state),
+    ]
 
 
 def should_retry(state: GenerationState) -> Literal["retry_workflow", "upload_workflow", "error"]:
@@ -795,7 +791,7 @@ DEFAULT_GENERATION_MODE="auto"
 
 ### Phase 3：Workflow Nodes 实现 (已完成)
 
-- [x] SpecialistFanOut 并行分发
+- [x] SupervisorAgent 直接触发 Specialist 并行分发（Send API）
 - [x] VisionAgent 视觉规范生成（LLM）
 - [x] GameplayAgent 游戏机制生成（LLM）
 - [x] NarrativeAgent 叙事内容生成（LLM）

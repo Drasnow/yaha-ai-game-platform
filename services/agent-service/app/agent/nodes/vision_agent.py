@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, VisionSpec
 from app.llm.client import LLMClient
 from app.llm.providers import create_provider
@@ -55,7 +55,7 @@ async def vision_agent(state: GenerationState) -> GenerationState:
         更新后的状态，包含 vision 字段
     """
     settings = get_settings()
-    request = state["request"]
+    request = get_request(state)
 
     logger.info(f"VisionAgent: 生成视觉规范, task_id={request.task_id}")
 
@@ -102,11 +102,11 @@ async def vision_agent(state: GenerationState) -> GenerationState:
         )
 
         # 返回状态更新（只返回改动字段，不含 request 等原始字段，避免并发写冲突）
-        return {
+        return _to_serializable({
             "logs": [log_start, log_complete],
             "vision": result,
             "specialist_results": {"vision": "success"},
-        }
+        })
 
     except Exception as e:
         logger.warning(f"VisionAgent: 生成失败，使用默认规范: {e}")
@@ -127,8 +127,8 @@ async def vision_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             "logs": [log_start, log_fallback],
             "vision": default_vision,
             "specialist_results": {"vision": f"fallback: {str(e)}"},
-        }
+        })

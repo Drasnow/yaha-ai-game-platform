@@ -100,7 +100,7 @@
 | `app/agent/nodes/template_workflow.py` | 模板化生成 | ✅（超出计划）|
 | `app/agent/nodes/retry_workflow.py` | 重试工作流 | ✅（超出计划）|
 | `app/agent/nodes/synthesis_agent.py` | 整合 Agent | ✅（超出计划）|
-| `app/agent/nodes/fanout_node.py` | Specialist 并行节点 | ✅（超出计划）|
+| `app/agent/nodes/fanout_node.py` | Specialist 并行节点（**已废弃，节点已删除，保留文件**） | ✅（超出计划）|
 | `app/llm/client.py` | LLM 客户端 | ✅（超出计划）|
 | `app/llm/providers.py` | 模型提供商 | ✅（超出计划）|
 | `app/llm/exceptions.py` | 异常类 | ✅（超出计划）|
@@ -821,7 +821,7 @@ git commit -m "feat: load playable games from object storage"
 - 单次 HTTP 调用 → **SSE 流式**实时推送每个节点日志
 - 固定模板选择 → **SupervisorAgent（LLM 意图分类）**判断简单/复杂后路由
 - 简单游戏 → **TemplateWorkflow**（模板化生成）
-- 复杂游戏 → **SpecialistFanOut**（VisionAgent + NarrativeAgent + GameplayAgent 并行 + SynthesisAgent）
+- 复杂游戏 → **[并行] Specialist Agents**（VisionAgent + NarrativeAgent + GameplayAgent 并行 + SynthesisAgent）
 - 无可观测性 → **LangSmith 完整 trace**
 - FastAPI 不可用时 → **Next.js 本地 fallback 生成器**
 

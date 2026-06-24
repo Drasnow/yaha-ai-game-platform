@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, SupervisorResult
 from app.agent.asset_content import fetch_all_asset_contents, build_assets_context
 from app.llm.client import LLMClient
@@ -79,7 +79,7 @@ async def supervisor_agent(state: GenerationState) -> GenerationState:
         更新后的状态，包含 supervisor_result 和路由决策
     """
     settings = get_settings()
-    request = state["request"]
+    request = get_request(state)
 
     logger.info(f"SupervisorAgent: 分析输入, task_id={request.task_id}")
 
@@ -140,12 +140,12 @@ async def supervisor_agent(state: GenerationState) -> GenerationState:
             f"complexity={result.complexity}, task_id={request.task_id}"
         )
 
-        return {
+        return _to_serializable({
             **state,
             "logs": [log_start, log_complete],
             "supervisor_result": supervisor_result,
             "asset_context": asset_context,
-        }
+        })
 
     except Exception as e:
         logger.warning(f"SupervisorAgent: LLM 调用失败，使用降级策略: {e}")
@@ -182,9 +182,9 @@ async def supervisor_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             **state,
             "logs": [log_start, log_fallback],
             "supervisor_result": supervisor_result,
             "asset_context": asset_context,
-        }
+        })

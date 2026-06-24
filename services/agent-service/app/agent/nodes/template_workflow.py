@@ -8,7 +8,7 @@ import logging
 import re
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, UnifiedDesign, VisionSpec, GameplaySpec, NarrativeSpec
 from app.agent.builder import GameDesign
 
@@ -61,7 +61,7 @@ async def template_workflow(state: GenerationState) -> GenerationState:
     Returns:
         更新后的状态，包含 unified_design 字段
     """
-    request = state["request"]
+    request = get_request(state)
     logger.info(f"TemplateWorkflow: 快速生成设计规范, task_id={request.task_id}")
 
     logs: list[AgentLog] = []
@@ -163,12 +163,12 @@ async def template_workflow(state: GenerationState) -> GenerationState:
         ))
 
         # 4. 不再渲染文件和验证，交给下游 code_generator_agent 和 validator_workflow
-        return {
+        return _to_serializable({
             **state,
             "logs": logs,
             "unified_design": unified_design,
             "generation_path": "template",
-        }
+        })
 
     except Exception as e:
         logger.error(f"TemplateWorkflow: 生成失败: {e}")
@@ -180,8 +180,8 @@ async def template_workflow(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         ))
 
-        return {
+        return _to_serializable({
             **state,
             "logs": logs,
             "error": f"模板生成失败: {str(e)}",
-        }
+        })

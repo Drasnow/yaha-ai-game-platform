@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, _to_serializable
 from app.agent.schemas import AgentLog, UploadResult
 from app.agent.storage import ArtifactStorage
 from app.core.config import get_settings
@@ -26,7 +26,7 @@ async def upload_workflow(state: GenerationState) -> GenerationState:
         更新后的状态，包含 artifact 字段
     """
     settings = get_settings()
-    request = state["request"]
+    request = get_request(state)
 
     logger.info(f"UploadWorkflow: 上传文件, task_id={request.task_id}")
 
@@ -68,8 +68,8 @@ async def upload_workflow(state: GenerationState) -> GenerationState:
         timestamp=datetime.now().isoformat(),
     ))
 
-    return {
+    return _to_serializable({
         **state,
         "logs": logs,
         "artifact": upload_result,
-    }
+    })

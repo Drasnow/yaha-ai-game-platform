@@ -1,0 +1,5 @@
+# Environment variables (DO NOT COMMIT)
+services/agent-service/.env
+apps/web/.env
+.env.local
+.env.production

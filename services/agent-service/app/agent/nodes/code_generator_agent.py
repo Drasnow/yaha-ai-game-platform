@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, get_unified_design, _to_serializable
 from app.agent.schemas import AgentLog
 from app.agent.builder import TEMPLATE_RENDERERS, GameDesign, GeneratedFiles
 from app.llm.client import LLMClient
@@ -184,8 +184,8 @@ async def code_generator_agent(state: GenerationState) -> GenerationState:
         更新后的状态，包含 generated_files 字段
     """
     settings = get_settings()
-    request = state["request"]
-    unified_design = state.get("unified_design")
+    request = get_request(state)
+    unified_design = get_unified_design(state)
 
     logger.info(f"CodeGenerator: 生成游戏代码, task_id={request.task_id}")
 
@@ -285,14 +285,14 @@ async def code_generator_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             **state,
             "logs": [log_start, log_llm_done, log_validate],
             "generated_files": {
                 "files": files,
                 "manifest": manifest,
             },
-        }
+        })
 
     except ValueError:
         # -----------------------------------------------------------
@@ -337,14 +337,14 @@ async def code_generator_agent(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         )
 
-        return {
+        return _to_serializable({
             **state,
             "logs": [log_start, log_fallback],
             "generated_files": {
                 "files": generated.files,
                 "manifest": generated.manifest,
             },
-        }
+        })
 
     except Exception:
         # LLM 调用 / 网络错误：交给 RetryPolicy 重试，不做降级

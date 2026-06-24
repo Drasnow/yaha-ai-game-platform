@@ -9,7 +9,7 @@ import json
 import logging
 from datetime import datetime
 
-from app.agent.state import GenerationState
+from app.agent.state import GenerationState, get_request, get_validation, _to_serializable
 from app.agent.schemas import AgentLog, IssueKind
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ async def retry_workflow(state: GenerationState) -> GenerationState:
     Returns:
         更新后的状态，包含 regenerate_requested 标志
     """
-    request = state["request"]
+    request = get_request(state)
     current_retry = state.get("retry_count", 0)
-    validation = state.get("validation")
+    validation = get_validation(state)
 
     logger.info(f"RetryWorkflow: 处理第 {current_retry + 1} 次, task_id={request.task_id}")
 
@@ -98,12 +98,12 @@ async def retry_workflow(state: GenerationState) -> GenerationState:
             timestamp=datetime.now().isoformat(),
         ))
 
-    return {
+    return _to_serializable({
         **state,
         "logs": logs,
         "retry_count": current_retry + 1,
         "regenerate_requested": regenerate_requested,
-    }
+    })
 
 
 def _fix_issues(

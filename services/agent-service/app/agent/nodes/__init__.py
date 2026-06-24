@@ -17,7 +17,6 @@ from app.agent.nodes.code_generator_agent import code_generator_agent
 from app.agent.nodes.validator_workflow import validator_workflow
 from app.agent.nodes.upload_workflow import upload_workflow
 from app.agent.nodes.retry_workflow import retry_workflow
-from app.agent.nodes.fanout_node import specialist_fan_out
 # DEPRECATED: template_workflow 在图中未连接，保留作为备选路径
 from app.agent.nodes.template_workflow import template_workflow
 
@@ -31,7 +30,6 @@ __all__ = [
     "validator_workflow",
     "upload_workflow",
     "retry_workflow",
-    "specialist_fan_out",
     # DEPRECATED: 模板快速路径，当前图中未使用
     "template_workflow",
 ]

@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     langsmith_project: str = Field(default="YAHA", validation_alias="LANGSMITH_PROJECT")
     langsmith_tracing: bool = Field(default=True, validation_alias="LANGSMITH_TRACING")
 
+    # Redis 配置（用于 LangGraph 持久化检查点）
+    redis_host: str = Field(default="localhost", validation_alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, validation_alias="REDIS_PORT")
+    redis_password: str = Field(default="", validation_alias="REDIS_PASSWORD")
+    redis_db: int = Field(default=0, validation_alias="REDIS_DB")
+
     # LLM Provider 配置
     llm_provider: str = "openai-compatible"  # openai-compatible | anthropic | siliconflow | ollama | lmstudio | fighting
     llm_base_url: str = "https://api.openai.com/v1"

@@ -129,6 +129,10 @@ export async function runGenerationTask({
   } | null = null;
   let finalLogs: Array<{ agentName: string; step: string; message: string }> = [];
 
+  let _gameDesignTitle: string | undefined;
+  let _gameDesignDescription: string | undefined;
+  let _gameDesignTags: string[] | undefined;
+
   try {
     const streamGenerator = generateGameWithAgentStream(
       {
@@ -168,6 +172,11 @@ export async function runGenerationTask({
           // 非致命错误记录到日志，不中断流程
           console.warn(`[generation-task] agent stream error: ${message}`);
         },
+        onGameDesign: async (data) => {
+          _gameDesignTitle = data.title;
+          _gameDesignDescription = data.description;
+          _gameDesignTags = data.tags;
+        },
       },
     );
 
@@ -189,10 +198,9 @@ export async function runGenerationTask({
       throw new Error("AI出现网络故障，未返回生成游戏，请稍后重试");
     }
 
-    // 获取 title/description/tags（需要从最后一个 unified_design log 或 agent 端返回）
-    // 目前 fallback 模式下用 prompt 提取，后续可扩展
-    const description = `根据创意生成的游戏：${prompt.slice(0, 50)}`;
-    const tags: string[] = ["generated", "ai"];
+    // 从 game_design SSE 事件获取 title/description/tags；若 agent 未返回则使用 fallback
+    const description = _gameDesignDescription || `根据创意生成的游戏：${prompt.slice(0, 50)}`;
+    const tags: string[] = _gameDesignTags && _gameDesignTags.length > 0 ? _gameDesignTags : ["click", "casual", "mvp"];
 
     await prisma.$transaction(async (tx) => {
       let gameId: string;
@@ -207,9 +215,11 @@ export async function runGenerationTask({
         const newGame = await tx.game.create({
           data: {
             authorId: user.id,
-            title: (
-              await tx.generationTask.findUnique({ where: { id: taskId }, select: { title: true } })
-            )?.title ?? "AI 生成游戏",
+            title: _gameDesignTitle
+              || (
+                await tx.generationTask.findUnique({ where: { id: taskId }, select: { title: true } })
+              )?.title
+              || "AI 生成游戏",
             description,
             tags,
             status: "DRAFT",

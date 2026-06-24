@@ -855,7 +855,7 @@ Agent 编排：Python 自研状态机；增强版可接 LangGraph / CrewAI
 
 原文档描述的"MVP 用 HTTP 调 FastAPI + 状态机"已升级为：
 
-- **Agent 编排层**：使用 LangGraph `StateGraph` 实现 Supervisor → SpecialistFanOut → TemplateWorkflow → CodeGenerator → Validator → Upload 的完整工作流图
+- **Agent 编排层**：使用 LangGraph `StateGraph` 实现 Supervisor → [并行] VisionAgent + GameplayAgent + NarrativeAgent → Synthesis → CodeGenerator → Validator → Upload 的完整工作流图
 - **流式接口**：`POST /generate/stream` 支持 SSE 实时推送每个节点的日志，前端实时展示
 - **Agent 节点**：SupervisorAgent（意图分类）、VisionAgent、NarrativeAgent、GameplayAgent、CodeGeneratorNode、ValidatorNode、UploadWorkflow
 - **LLM 客户端**：独立 `app/llm/` 模块，支持 OpenAI 兼容接口，内置降级策略
@@ -922,7 +922,7 @@ services/agent-service/
         template_workflow.py               ← 模板化游戏生成
         retry_workflow.py                  ← 重试工作流
         synthesis_agent.py                 ← 整合 Agent
-        fanout_node.py                     ← Specialist 并行节点
+        fanout_node.py                     ← [已废弃，节点已删除]
     llm/
       client.py                            ← LLM 客户端
       providers.py                         ← 模型提供商

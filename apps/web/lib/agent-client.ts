@@ -138,6 +138,7 @@ export type AgentSseEvent =
   | { type: "artifact"; manifest_url: string; entry_url: string; artifact_base_url: string; file_count: number }
   | { type: "rejected"; feedback: string }
   | { type: "error"; message: string }
+  | { type: "game_design"; title: string; description: string; tags: string[] }
   | { type: "end" };
 
 export type StreamCallbacks = {
@@ -145,6 +146,7 @@ export type StreamCallbacks = {
   onStep: (step: string) => Promise<void>;
   onRejected: (feedback: string) => Promise<void>;
   onError: (message: string) => Promise<void>;
+  onGameDesign?: (data: { title: string; description: string; tags: string[] }) => Promise<void>;
 };
 
 export async function* generateGameWithAgentStream(
@@ -204,6 +206,12 @@ export async function* generateGameWithAgentStream(
             await callbacks.onRejected(event.feedback);
           } else if (event.type === "error") {
             await callbacks.onError(event.message);
+          } else if (event.type === "game_design" && callbacks.onGameDesign) {
+            await callbacks.onGameDesign({
+              title: event.title,
+              description: event.description,
+              tags: event.tags,
+            });
           } else if (event.type === "end" || event.type === "start") {
             // no-op
           }
